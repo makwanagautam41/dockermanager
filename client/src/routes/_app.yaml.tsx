@@ -1,4 +1,3 @@
-import { uuid } from "@/lib/utils";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -33,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { YamlEditor } from "@/components/yaml-editor";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { EmptyState } from "@/components/empty-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +60,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useWorkspaces } from "@/lib/workspace-store";
-import { listBackups, recordBackup, type BackupRow } from "@/lib/sqlite";
 import { api } from "@/lib/api";
 import type { EnvVar, YamlFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -70,7 +69,7 @@ export const Route = createFileRoute("/_app/yaml")({
   component: YamlPage,
   head: () => ({
     meta: [
-      { title: "Explorer · Stackhand" },
+      { title: "Explorer · Docker Manager" },
       { name: "description", content: "Browse and edit files across your workspace." },
     ],
   }),
@@ -81,7 +80,12 @@ type DirHandle = {
   getFileHandle: (
     name: string,
     opts?: { create?: boolean },
-  ) => Promise<{ createWritable: () => Promise<{ write: (d: string) => Promise<void>; close: () => Promise<void> }> }>;
+  ) => Promise<{
+    createWritable: () => Promise<{
+      write: (d: string) => Promise<void>;
+      close: () => Promise<void>;
+    }>;
+  }>;
 };
 
 function YamlPage() {
@@ -117,14 +121,26 @@ function YamlPage() {
 
   useEffect(() => {
     if (current?.id) {
-      api.listBackups(current.id).then(setBackups).catch(() => {});
+      api
+        .listBackups(current.id)
+        .then(setBackups)
+        .catch(() => {});
     }
   }, [current?.id]);
 
   if (!hydrated) return <PageSkeleton variant="editor" />;
   if (!current) return null;
   const tree = treeByWs[current.id];
-  if (!tree) return <PageSkeleton variant="editor" />;
+  if (tree === undefined) return <PageSkeleton variant="editor" />;
+  if (!tree) {
+    return (
+      <EmptyState
+        icon={IconFolderOpen}
+        title="Workspace folder is unavailable"
+        description={`The configured root folder does not exist or cannot be read: ${current.rootFolder || "(not configured)"}`}
+      />
+    );
+  }
 
   const findFile = (node: YamlFile): YamlFile | null => {
     if (node.id === selectedId) return node;
@@ -169,24 +185,14 @@ function YamlPage() {
 
   const doBackup = async () => {
     if (!selected || selected.isDir || !current) return;
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const name = `${selected.name.replace(/\.[^.]+$/, "")}.${stamp}.bak`;
     try {
-      const result = await api.backupWorkspace(current.id);
-      await recordBackup({
-        id: uuid(),
-        workspaceId: current.id,
-        filePath: selected.path,
-        location: result.path,
-        size: new Blob([selected.content]).size,
-        ts: Date.now(),
-      });
-      setBackups((prev) => [...prev, { name, path: result.path, createdAt: new Date().toISOString() }]);
+      await api.backupWorkspace(current.id);
+      setBackups(await api.listBackups(current.id));
       pushActivity(current.id, {
         kind: "edit",
-        message: `backup: ${selected.name} → ${result.path}`,
+        message: `backup: ${selected.name}`,
       });
-      toast.success("Backup created", { description: result.path });
+      toast.success("Backup created");
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -207,21 +213,37 @@ function YamlPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">File Explorer</h1>
-          <p className="text-mono text-xs text-muted-foreground">
-            root: {current.rootFolder}
-          </p>
+          <p className="text-mono text-xs text-muted-foreground">root: {current.rootFolder}</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => { refresh(); toast.success("Explorer refreshed"); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              refresh();
+              toast.success("Explorer refreshed");
+            }}
+          >
             <IconRefresh className="h-3.5 w-3.5" stroke={1.75} /> Refresh
           </Button>
-          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setImportOpen(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5"
+            onClick={() => setImportOpen(true)}
+          >
             <IconUpload className="h-3.5 w-3.5" stroke={1.75} /> Import
           </Button>
           {selected && !selected.isDir && (
             <>
               {selected.name.endsWith(".yml") || selected.name.endsWith(".yaml") ? (
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-emerald-500 hover:text-emerald-600" onClick={() => setSpinYaml(selected)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 text-emerald-500 hover:text-emerald-600"
+                  onClick={() => setSpinYaml(selected)}
+                >
                   <IconPlayerPlay className="h-3.5 w-3.5" stroke={1.75} /> Spin
                 </Button>
               ) : null}
@@ -332,21 +354,13 @@ function YamlPage() {
                 />
               </TabsContent>
               <TabsContent value="backups" className="mt-0">
-                <BackupsList
-                  workspaceId={current.id}
-                  filePath={selected.path}
-                  backups={backups}
-                  onRestore={doRestore}
-                />
+                <BackupsList backups={backups} onRestore={doRestore} />
               </TabsContent>
             </Tabs>
           ) : (
             <Card className="grid h-[420px] place-items-center">
               <div className="text-center">
-                <IconFile
-                  className="mx-auto mb-2 h-6 w-6 text-muted-foreground"
-                  stroke={1.75}
-                />
+                <IconFile className="mx-auto mb-2 h-6 w-6 text-muted-foreground" stroke={1.75} />
                 <div className="text-sm font-medium">Select a file</div>
                 <div className="text-xs text-muted-foreground">
                   Pick a file from the tree to view, edit, or manage.
@@ -424,14 +438,26 @@ function YamlPage() {
             />
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setImportOpen(false)} className="rounded-md">Cancel</Button>
-            <Button onClick={doImport} className="rounded-md">Import</Button>
+            <Button variant="ghost" onClick={() => setImportOpen(false)} className="rounded-md">
+              Cancel
+            </Button>
+            <Button onClick={doImport} className="rounded-md">
+              Import
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Spin YAML dialog */}
-      <Dialog open={!!spinYaml} onOpenChange={(o) => { if (!o) { setSpinYaml(null); setSpinModify("ask"); } }}>
+      <Dialog
+        open={!!spinYaml}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSpinYaml(null);
+            setSpinModify("ask");
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-mono">Spin container from {spinYaml?.name}</DialogTitle>
@@ -445,25 +471,30 @@ function YamlPage() {
                 Would you like to modify the YAML before spinning the container?
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => {
-                  setSpinModifiedContent(spinYaml?.content || "");
-                  setSpinModify("modify");
-                }}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSpinModifiedContent(spinYaml?.content || "");
+                    setSpinModify("modify");
+                  }}
+                >
                   Yes, modify it
                 </Button>
-                <Button onClick={async () => {
-                  setSpinModify("direct");
-                  if (!spinYaml || !current) return;
-                  try {
-                    await api.composeUpFromYaml(spinYaml.path, spinYaml.content, current.id);
-                    toast.success("Container spun from " + spinYaml.name);
-                    setSpinYaml(null);
-                    setSpinModify("ask");
-                  } catch (e: any) {
-                    toast.error(e.message);
-                    setSpinModify("ask");
-                  }
-                }}>
+                <Button
+                  onClick={async () => {
+                    setSpinModify("direct");
+                    if (!spinYaml || !current) return;
+                    try {
+                      await api.composeUpFromYaml(spinYaml.path, spinYaml.content, current.id);
+                      toast.success("Container spun from " + spinYaml.name);
+                      setSpinYaml(null);
+                      setSpinModify("ask");
+                    } catch (e: any) {
+                      toast.error(e.message);
+                      setSpinModify("ask");
+                    }
+                  }}
+                >
                   No, spin as-is
                 </Button>
               </div>
@@ -477,25 +508,35 @@ function YamlPage() {
                 className="w-full rounded-md border bg-background px-3 py-2 font-mono text-xs"
               />
               <div className="flex gap-2 justify-end">
-                <Button variant="ghost" onClick={() => setSpinModify("ask")}>Back</Button>
-                <Button onClick={async () => {
-                  if (!spinYaml || !current) return;
-                  try {
-                    const parsed = yaml.load(spinModifiedContent) as any;
-                    const services = parsed?.services;
-                    const serviceName = services ? Object.keys(services)[0] : spinYaml.name.replace(/\.(yml|yaml)$/, "");
-                    const folderName = serviceName;
-                    const folderPath = current.rootFolder + "/" + folderName;
-                    await api.writeFile(folderPath + "/" + spinYaml.name, spinModifiedContent);
-                    await api.composeUpFromYaml(folderPath + "/" + spinYaml.name, spinModifiedContent, current.id);
-                    toast.success("Modified container spun from new folder");
-                    setSpinYaml(null);
-                    setSpinModify("ask");
-                    refresh();
-                  } catch (e: any) {
-                    toast.error(e.message);
-                  }
-                }}>
+                <Button variant="ghost" onClick={() => setSpinModify("ask")}>
+                  Back
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!spinYaml || !current) return;
+                    try {
+                      const parsed = yaml.load(spinModifiedContent) as any;
+                      const services = parsed?.services;
+                      const serviceName = services
+                        ? Object.keys(services)[0]
+                        : spinYaml.name.replace(/\.(yml|yaml)$/, "");
+                      const folderName = serviceName;
+                      const folderPath = current.rootFolder + "/" + folderName;
+                      await api.writeFile(folderPath + "/" + spinYaml.name, spinModifiedContent);
+                      await api.composeUpFromYaml(
+                        folderPath + "/" + spinYaml.name,
+                        spinModifiedContent,
+                        current.id,
+                      );
+                      toast.success("Modified container spun from new folder");
+                      setSpinYaml(null);
+                      setSpinModify("ask");
+                      refresh();
+                    } catch (e: any) {
+                      toast.error(e.message);
+                    }
+                  }}
+                >
                   Confirm & Spin
                 </Button>
               </div>
@@ -507,7 +548,13 @@ function YamlPage() {
   );
 }
 
-function RenameDialog({ node, value, onValue, onClose, onConfirm }: {
+function RenameDialog({
+  node,
+  value,
+  onValue,
+  onClose,
+  onConfirm,
+}: {
   node: YamlFile | null;
   value: string;
   onValue: (v: string) => void;
@@ -528,7 +575,9 @@ function RenameDialog({ node, value, onValue, onClose, onConfirm }: {
           className="font-mono text-sm"
         />
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={onConfirm}>Rename</Button>
         </DialogFooter>
       </DialogContent>
@@ -536,7 +585,11 @@ function RenameDialog({ node, value, onValue, onClose, onConfirm }: {
   );
 }
 
-function DeleteDialog({ node, onClose, onConfirm }: {
+function DeleteDialog({
+  node,
+  onClose,
+  onConfirm,
+}: {
   node: YamlFile | null;
   onClose: () => void;
   onConfirm: () => void;
@@ -547,8 +600,8 @@ function DeleteDialog({ node, onClose, onConfirm }: {
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {node?.name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will remove the {node?.isDir ? "folder and all its contents" : "file"} from
-            this workspace. This action cannot be undone.
+            This will remove the {node?.isDir ? "folder and all its contents" : "file"} from this
+            workspace. This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -565,7 +618,13 @@ function DeleteDialog({ node, onClose, onConfirm }: {
   );
 }
 
-function CreateDialog({ state, value, onValue, onClose, onConfirm }: {
+function CreateDialog({
+  state,
+  value,
+  onValue,
+  onClose,
+  onConfirm,
+}: {
   state: { parent: YamlFile; isDir: boolean } | null;
   value: string;
   onValue: (v: string) => void;
@@ -589,7 +648,9 @@ function CreateDialog({ state, value, onValue, onClose, onConfirm }: {
           placeholder={state?.isDir ? "folder-name" : "filename.ext"}
         />
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={onConfirm}>Create</Button>
         </DialogFooter>
       </DialogContent>
@@ -597,68 +658,28 @@ function CreateDialog({ state, value, onValue, onClose, onConfirm }: {
   );
 }
 
-function BackupsList({ workspaceId, filePath, backups, onRestore }: {
-  workspaceId: string;
-  filePath: string;
-  backups: any[];
+function BackupsList({
+  backups,
+  onRestore,
+}: {
+  backups: Array<{
+    name: string;
+    path: string;
+    createdAt: string;
+    fileCount: number;
+    size: number;
+  }>;
   onRestore: (snapshot: string) => void;
 }) {
-  const [rows, setRows] = useState<BackupRow[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    listBackups(workspaceId, filePath).then((r) => !cancelled && setRows(r));
-    return () => { cancelled = true; };
-  }, [workspaceId, filePath]);
-
-  if (!rows) {
-    return (
-      <Card className="p-3">
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-full" />
-          ))}
-        </div>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-3">
-      {backups.length > 0 && (
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            <span>server backups</span>
-            <span>{backups.length} snapshots</span>
-          </div>
-          <ScrollArea className="h-[160px]">
-            <ul className="divide-y">
-              {backups.map((b, i) => (
-                <li key={i} className="flex items-center justify-between gap-3 px-3 py-2 font-mono text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <IconArchive className="h-3.5 w-3.5 text-muted-foreground" stroke={1.75} />
-                    <span className="truncate">{b.name || b.path}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted-foreground">
-                      {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : ""}
-                    </span>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onRestore(b.name)} title="Restore">
-                      <IconRestore className="h-3 w-3" stroke={1.75} />
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
-        </Card>
-      )}
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>backup history</span>
-          <span>{rows.length} entries</span>
+          <span>server backups</span>
+          <span>{backups.length} snapshots</span>
         </div>
         <ScrollArea className="h-[160px]">
-          {rows.length === 0 ? (
+          {backups.length === 0 ? (
             <div className="grid h-[100px] place-items-center text-center">
               <div>
                 <IconArchive className="mx-auto mb-1 h-5 w-5 text-muted-foreground" stroke={1.75} />
@@ -667,15 +688,27 @@ function BackupsList({ workspaceId, filePath, backups, onRestore }: {
             </div>
           ) : (
             <ul className="divide-y">
-              {rows.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 font-mono text-xs">
+              {backups.map((r) => (
+                <li
+                  key={r.name}
+                  className="flex items-center justify-between gap-3 px-3 py-2 font-mono text-xs"
+                >
                   <div className="flex items-center gap-2 truncate">
                     <IconArchive className="h-3.5 w-3.5 text-muted-foreground" stroke={1.75} />
-                    <span className="truncate">{r.location}</span>
+                    <span className="truncate">{r.name}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                    <span>{r.size} B</span>
-                    <span>{new Date(r.ts).toLocaleString()}</span>
+                    <span>{r.fileCount} files</span>
+                    <span>{new Date(r.createdAt).toLocaleString()}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => onRestore(r.name)}
+                      title="Restore"
+                    >
+                      <IconRestore className="h-3 w-3" stroke={1.75} />
+                    </Button>
                   </div>
                 </li>
               ))}
@@ -687,10 +720,7 @@ function BackupsList({ workspaceId, filePath, backups, onRestore }: {
   );
 }
 
-function EnvEditor({ file, onChange }: {
-  file: YamlFile;
-  onChange: (env: EnvVar[]) => void;
-}) {
+function EnvEditor({ file, onChange }: { file: YamlFile; onChange: (env: EnvVar[]) => void }) {
   const [showSecrets, setShowSecrets] = useState(false);
   const env = file.env ?? [];
 
@@ -737,11 +767,22 @@ function EnvEditor({ file, onChange }: {
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           <IconKey className="h-3.5 w-3.5" stroke={1.75} />
           {file.path.replace(/\/[^/]+$/, "")}/.env
-          <Badge variant="secondary" className="h-4 px-1 text-[10px]">isolated</Badge>
+          <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+            isolated
+          </Badge>
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="h-7 rounded-md px-2" onClick={() => setShowSecrets((v) => !v)}>
-            {showSecrets ? <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} /> : <IconEye className="h-3.5 w-3.5" stroke={1.75} />}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 rounded-md px-2"
+            onClick={() => setShowSecrets((v) => !v)}
+          >
+            {showSecrets ? (
+              <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
+            ) : (
+              <IconEye className="h-3.5 w-3.5" stroke={1.75} />
+            )}
           </Button>
           <Button size="sm" variant="ghost" className="h-7 rounded-md px-2" onClick={copyDotEnv}>
             <IconCopy className="h-3.5 w-3.5" stroke={1.75} />
@@ -749,7 +790,12 @@ function EnvEditor({ file, onChange }: {
           <Button size="sm" variant="ghost" className="h-7 rounded-md px-2" onClick={importDotEnv}>
             <IconUpload className="h-3.5 w-3.5" stroke={1.75} />
           </Button>
-          <Button size="sm" variant="outline" className="h-7 gap-1 rounded-md px-2 text-xs" onClick={add}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 rounded-md px-2 text-xs"
+            onClick={add}
+          >
             <IconPlus className="h-3.5 w-3.5" stroke={1.75} /> Add
           </Button>
         </div>
@@ -783,8 +829,13 @@ function EnvEditor({ file, onChange }: {
                   className="h-8 flex-1 font-mono text-xs"
                   placeholder="value"
                 />
-                <Button size="sm" variant={v.secret ? "secondary" : "ghost"} className="h-8 px-2 text-[10px]"
-                  onClick={() => update(i, { secret: !v.secret })} title="Mark as secret">
+                <Button
+                  size="sm"
+                  variant={v.secret ? "secondary" : "ghost"}
+                  className="h-8 px-2 text-[10px]"
+                  onClick={() => update(i, { secret: !v.secret })}
+                  title="Mark as secret"
+                >
                   secret
                 </Button>
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => remove(i)}>
@@ -799,12 +850,21 @@ function EnvEditor({ file, onChange }: {
   );
 }
 
-function FileTree({ node, level, selectedId, onSelect, onAction }: {
+function FileTree({
+  node,
+  level,
+  selectedId,
+  onSelect,
+  onAction,
+}: {
   node: YamlFile;
   level: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAction: (node: YamlFile, a: "rename" | "delete" | "duplicate" | "new-file" | "new-folder") => void;
+  onAction: (
+    node: YamlFile,
+    a: "rename" | "delete" | "duplicate" | "new-file" | "new-folder",
+  ) => void;
 }) {
   const [open, setOpen] = useState(level < 2);
   const isSelected = node.id === selectedId;
@@ -819,12 +879,20 @@ function FileTree({ node, level, selectedId, onSelect, onAction }: {
         style={{ paddingLeft: level * 12 + 8 }}
       >
         <IconFile className="h-3.5 w-3.5 shrink-0 text-muted-foreground" stroke={1.75} />
-        <button type="button" className="flex-1 truncate text-left" onClick={() => onSelect(node.id)}>
+        <button
+          type="button"
+          className="flex-1 truncate text-left"
+          onClick={() => onSelect(node.id)}
+        >
           {node.name}
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+            >
               <IconDots className="h-3.5 w-3.5" stroke={1.75} />
             </Button>
           </DropdownMenuTrigger>
@@ -835,7 +903,10 @@ function FileTree({ node, level, selectedId, onSelect, onAction }: {
             <DropdownMenuItem onClick={() => onAction(node, "duplicate")}>
               <IconCopy className="mr-2 h-3.5 w-3.5" stroke={1.75} /> Duplicate
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onAction(node, "delete")}>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => onAction(node, "delete")}
+            >
               <IconTrash className="mr-2 h-3.5 w-3.5" stroke={1.75} /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -850,15 +921,31 @@ function FileTree({ node, level, selectedId, onSelect, onAction }: {
         className="group flex items-center rounded-md pr-1 transition-colors hover:bg-accent"
         style={{ paddingLeft: level * 12 + 4 }}
       >
-        <button type="button" onClick={() => setOpen((v) => !v)} className="flex flex-1 items-center gap-1 py-1 text-sm text-left">
-          {open ? <IconChevronDown className="h-3.5 w-3.5 shrink-0" stroke={1.75} /> : <IconChevronRight className="h-3.5 w-3.5 shrink-0" stroke={1.75} />}
-          {open ? <IconFolderOpen className="h-3.5 w-3.5 shrink-0 text-foreground/70" stroke={1.75} /> : <IconFolder className="h-3.5 w-3.5 shrink-0 text-foreground/70" stroke={1.75} />}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex flex-1 items-center gap-1 py-1 text-sm text-left"
+        >
+          {open ? (
+            <IconChevronDown className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
+          ) : (
+            <IconChevronRight className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
+          )}
+          {open ? (
+            <IconFolderOpen className="h-3.5 w-3.5 shrink-0 text-foreground/70" stroke={1.75} />
+          ) : (
+            <IconFolder className="h-3.5 w-3.5 shrink-0 text-foreground/70" stroke={1.75} />
+          )}
           <span className="truncate font-medium">{node.name}</span>
         </button>
         {level > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+              >
                 <IconDots className="h-3.5 w-3.5" stroke={1.75} />
               </Button>
             </DropdownMenuTrigger>
@@ -872,16 +959,27 @@ function FileTree({ node, level, selectedId, onSelect, onAction }: {
               <DropdownMenuItem onClick={() => onAction(node, "rename")}>
                 <IconPencil className="mr-2 h-3.5 w-3.5" stroke={1.75} /> Rename
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onAction(node, "delete")}>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => onAction(node, "delete")}
+              >
                 <IconTrash className="mr-2 h-3.5 w-3.5" stroke={1.75} /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
       </div>
-      {open && (node.children ?? []).map((c) => (
-        <FileTree key={c.id} node={c} level={level + 1} selectedId={selectedId} onSelect={onSelect} onAction={onAction} />
-      ))}
+      {open &&
+        (node.children ?? []).map((c) => (
+          <FileTree
+            key={c.id}
+            node={c}
+            level={level + 1}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onAction={onAction}
+          />
+        ))}
     </div>
   );
 }

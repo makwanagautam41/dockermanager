@@ -17,7 +17,7 @@ import { subscribeToContainerStats, stopContainerStats, useSocket } from "@/lib/
 
 export const Route = createFileRoute("/_app/metrics")({
   component: MetricsPage,
-  head: () => ({ meta: [{ title: "Metrics · Stackhand" }] }),
+  head: () => ({ meta: [{ title: "Metrics · Docker Manager" }] }),
 });
 
 type Range = "1h" | "24h" | "7d" | "live";

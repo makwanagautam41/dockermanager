@@ -45,7 +45,7 @@ export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
   head: () => ({
     meta: [
-      { title: "Settings · Stackhand" },
+      { title: "Settings · Docker Manager" },
       { name: "description", content: "Workspace, appearance, and Ollama settings." },
     ],
   }),
@@ -272,7 +272,7 @@ function SettingsPage() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `stackhand-backup-${Date.now()}.json`;
+                  a.download = `dockermanager-backup-${Date.now()}.json`;
                   a.click();
                   URL.revokeObjectURL(url);
                   toast.success("Backup exported");

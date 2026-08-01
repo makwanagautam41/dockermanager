@@ -23,7 +23,7 @@ export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
   head: () => ({
     meta: [
-      { title: "Dashboard · Stackhand" },
+      { title: "Dashboard · Docker Manager" },
       { name: "description", content: "Overview of your stacks, containers and resource usage." },
     ],
   }),
@@ -37,7 +37,10 @@ function DashboardPage() {
   const [liveImages, setLiveImages] = useState<any[]>([]);
 
   useEffect(() => {
-    api.getDashboard().then(setDashData).catch(() => {});
+    api
+      .getDashboard()
+      .then(setDashData)
+      .catch(() => {});
   }, [current?.id]);
 
   useEffect(() => {
@@ -74,7 +77,8 @@ function DashboardPage() {
 
   const totalStacks = dashData?.totalStacks ?? stacks.length;
   const totalContainers = dashData?.dockerContainers ?? liveContainers.length ?? containers.length;
-  const runningContainers = dashData?.dockerRunning ?? liveContainers.filter((c: any) => c.status === "running").length;
+  const runningContainers =
+    dashData?.dockerRunning ?? liveContainers.filter((c: any) => c.status === "running").length;
   const imagesCount = dashData?.dockerImages ?? liveImages.length;
   const diskLabel = dashData?.diskUsage
     ? dashData.diskUsage >= 1073741824
@@ -105,8 +109,7 @@ function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Live overview of{" "}
-            <span className="font-medium text-foreground">{current.name}</span>
+            Live overview of <span className="font-medium text-foreground">{current.name}</span>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -121,17 +124,26 @@ function DashboardPage() {
             </Link>
           </Button>
           <Button asChild>
-            <Link to="/stacks">
-              <Plus className="mr-2 h-4 w-4" /> New stack
+            <Link to="/containers">
+              <Plus className="mr-2 h-4 w-4" /> Create container
             </Link>
           </Button>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total stacks" value={stacks.length} sub="in this workspace" />
+        <StatCard
+          label="Containers"
+          value={runningContainers + (totalContainers - runningContainers)}
+          sub="on this host"
+        />
         <StatCard label="Running" value={runningContainers} sub="containers" tone="success" />
-        <StatCard label="Stopped" value={totalContainers - runningContainers} sub="containers" tone="muted" />
+        <StatCard
+          label="Stopped"
+          value={totalContainers - runningContainers}
+          sub="containers"
+          tone="muted"
+        />
         <StatCard label="Images" value={imagesCount} sub="on this host" tone="warning" />
       </div>
 

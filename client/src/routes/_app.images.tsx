@@ -35,7 +35,7 @@ export const Route = createFileRoute("/_app/images")({
   component: ImagesPage,
   head: () => ({
     meta: [
-      { title: "Images · Stackhand" },
+      { title: "Images · Docker Manager" },
       { name: "description", content: "Local Docker images." },
     ],
   }),

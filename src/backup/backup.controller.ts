@@ -7,33 +7,31 @@ import { BackupService } from './backup.service';
 export class BackupController {
   constructor(private service: BackupService) {}
 
-  @Post('workspaces/:workspaceId/backup')
-  @ApiOperation({ summary: 'Backup all workspace files' })
-  backup(@Param('workspaceId') workspaceId: string) {
-    return this.service.backupWorkspaceFiles(workspaceId);
+  @Post('backup')
+  @ApiOperation({ summary: 'Backup all files' })
+  backup() {
+    return this.service.backupWorkspaceFiles();
   }
 
-  @Get('workspaces/:workspaceId/backups')
-  @ApiOperation({ summary: 'List all backups for a workspace' })
-  listBackups(@Param('workspaceId') workspaceId: string) {
-    return this.service.listBackups(workspaceId);
+  @Get('backups')
+  @ApiOperation({ summary: 'List all backups' })
+  listBackups() {
+    return this.service.listBackups();
   }
 
-  @Post('workspaces/:workspaceId/backups/:snapshotName/restore')
-  @ApiOperation({ summary: 'Restore workspace from a backup snapshot' })
+  @Post('backups/:snapshotName/restore')
+  @ApiOperation({ summary: 'Restore from a backup snapshot' })
   restore(
-    @Param('workspaceId') workspaceId: string,
     @Param('snapshotName') snapshotName: string,
   ) {
-    return this.service.restoreBackup(workspaceId, snapshotName);
+    return this.service.restoreBackup(snapshotName);
   }
 
-  @Delete('workspaces/:workspaceId/backups/:snapshotName')
+  @Delete('backups/:snapshotName')
   @ApiOperation({ summary: 'Delete a backup snapshot' })
   deleteBackup(
-    @Param('workspaceId') workspaceId: string,
     @Param('snapshotName') snapshotName: string,
   ) {
-    return this.service.deleteBackup(workspaceId, snapshotName);
+    return this.service.deleteBackup(snapshotName);
   }
 }

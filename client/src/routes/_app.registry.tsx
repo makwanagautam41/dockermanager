@@ -49,7 +49,7 @@ export const Route = createFileRoute("/_app/registry")({
   component: RegistryPage,
   head: () => ({
     meta: [
-      { title: "Registry · Stackhand" },
+      { title: "Registry · Docker Manager" },
       { name: "description", content: "Docker Hub registry explorer." },
     ],
   }),

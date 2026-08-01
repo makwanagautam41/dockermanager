@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/env")({
   component: EnvPage,
-  head: () => ({ meta: [{ title: "Env files · Stackhand" }] }),
+  head: () => ({ meta: [{ title: "Env files · Docker Manager" }] }),
 });
 
 function EnvPage() {

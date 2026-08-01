@@ -4,30 +4,31 @@ import * as path from 'path';
 import * as os from 'os';
 import { PrismaService } from '../prisma/prisma.service';
 
-const STACKHAND_BACKUP_DIR =
-  process.env.STACKHAND_BACKUP_DIR ||
-  path.join(os.homedir(), '.stackhand', 'backups');
+const DOCKERMANAGER_BACKUP_DIR =
+  process.env.DOCKERMANAGER_BACKUP_DIR ||
+  path.join(os.homedir(), '.dockermanager', 'backups');
 
 @Injectable()
 export class BackupService {
   constructor(private prisma: PrismaService) {}
 
-  private ensureBackupDir(workspaceName: string): string {
-    const dir = path.join(STACKHAND_BACKUP_DIR, workspaceName);
+  private ensureBackupDir(): string {
+    const dir = path.join(DOCKERMANAGER_BACKUP_DIR, 'default');
     fs.mkdirSync(dir, { recursive: true });
     return dir;
   }
 
-  async backupWorkspaceFiles(workspaceId: string) {
-    const ws = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-    });
-    if (!ws) throw new BadRequestException('Workspace not found');
-    if (!ws.rootFolderPath || !fs.existsSync(ws.rootFolderPath)) {
-      throw new BadRequestException('Workspace root folder does not exist');
+  private getRootFolderPath(): string {
+    return path.join(process.cwd(), 'yaml-data');
+  }
+
+  async backupWorkspaceFiles() {
+    const rootFolderPath = this.getRootFolderPath();
+    if (!fs.existsSync(rootFolderPath)) {
+      fs.mkdirSync(rootFolderPath, { recursive: true });
     }
 
-    const backupDir = this.ensureBackupDir(ws.name);
+    const backupDir = this.ensureBackupDir();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const snapshotDir = path.join(backupDir, `snapshot-${timestamp}`);
     fs.mkdirSync(snapshotDir, { recursive: true });
@@ -47,12 +48,11 @@ export class BackupService {
       }
     };
 
-    copyRecursive(ws.rootFolderPath, snapshotDir);
+    copyRecursive(rootFolderPath, snapshotDir);
 
     await this.prisma.activity.create({
       data: {
         id: crypto.randomUUID(),
-        workspaceId,
         kind: 'backup',
         message: `backup created: ${snapshotDir}`,
         ts: new Date(),
@@ -67,13 +67,8 @@ export class BackupService {
     };
   }
 
-  async listBackups(workspaceId: string) {
-    const ws = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-    });
-    if (!ws) throw new BadRequestException('Workspace not found');
-
-    const backupDir = path.join(STACKHAND_BACKUP_DIR, ws.name);
+  async listBackups() {
+    const backupDir = path.join(DOCKERMANAGER_BACKUP_DIR, 'default');
     if (!fs.existsSync(backupDir)) return [];
 
     const entries = fs.readdirSync(backupDir, { withFileTypes: true });
@@ -98,19 +93,15 @@ export class BackupService {
     return snapshots;
   }
 
-  async restoreBackup(workspaceId: string, snapshotName: string) {
-    const ws = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-    });
-    if (!ws) throw new BadRequestException('Workspace not found');
-
-    const snapshotPath = path.join(STACKHAND_BACKUP_DIR, ws.name, snapshotName);
+  async restoreBackup(snapshotName: string) {
+    const snapshotPath = path.join(DOCKERMANAGER_BACKUP_DIR, 'default', snapshotName);
     if (!fs.existsSync(snapshotPath)) {
       throw new BadRequestException('Snapshot not found');
     }
 
-    if (!ws.rootFolderPath || !fs.existsSync(ws.rootFolderPath)) {
-      fs.mkdirSync(ws.rootFolderPath, { recursive: true });
+    const rootFolderPath = this.getRootFolderPath();
+    if (!fs.existsSync(rootFolderPath)) {
+      fs.mkdirSync(rootFolderPath, { recursive: true });
     }
 
     const copyRecursive = (src: string, dest: string) => {
@@ -127,28 +118,22 @@ export class BackupService {
       }
     };
 
-    copyRecursive(snapshotPath, ws.rootFolderPath);
+    copyRecursive(snapshotPath, rootFolderPath);
 
     await this.prisma.activity.create({
       data: {
         id: crypto.randomUUID(),
-        workspaceId,
         kind: 'restore',
         message: `backup restored: ${snapshotName}`,
         ts: new Date(),
       },
     });
 
-    return { message: 'Backup restored', path: ws.rootFolderPath };
+    return { message: 'Backup restored', path: rootFolderPath };
   }
 
-  async deleteBackup(workspaceId: string, snapshotName: string) {
-    const ws = await this.prisma.workspace.findUnique({
-      where: { id: workspaceId },
-    });
-    if (!ws) throw new BadRequestException('Workspace not found');
-
-    const snapshotPath = path.join(STACKHAND_BACKUP_DIR, ws.name, snapshotName);
+  async deleteBackup(snapshotName: string) {
+    const snapshotPath = path.join(DOCKERMANAGER_BACKUP_DIR, 'default', snapshotName);
     if (!fs.existsSync(snapshotPath)) {
       throw new BadRequestException('Snapshot not found');
     }

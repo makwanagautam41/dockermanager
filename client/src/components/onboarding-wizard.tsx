@@ -270,7 +270,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 <div>
                   <h2 className="text-xl font-semibold tracking-tight">Root folder</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Stackhand reads and manages YAML files inside this folder.
+                    Docker Manager reads and manages YAML files inside this folder.
                   </p>
                 </div>
                 <FolderPicker value={rootFolder} onChange={setRootFolder} />

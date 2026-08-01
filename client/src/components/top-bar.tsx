@@ -23,7 +23,7 @@ export function TopBar() {
           onClick={() => setOpenPalette(true)}
         >
           <IconSearch className="h-4 w-4" stroke={1.75} />
-          <span className="hidden md:inline">Search stacks, files, actions…</span>
+          <span className="hidden md:inline">Search containers, files, actions…</span>
           <kbd className="ml-auto hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] md:inline">
             ⌘K
           </kbd>

@@ -1,0 +1,16 @@
+node_modules
+dist
+client/node_modules
+client/.output
+client/dist
+client
+deploy/Dockerfile.frontend
+deploy/nginx.conf
+deploy/dockermanager.conf
+deploy/hosts.example
+docs
+docker-yaml-files
+.git
+npm-debug.log
+workspaces-data
+.env

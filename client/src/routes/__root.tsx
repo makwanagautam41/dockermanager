@@ -15,7 +15,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { WorkspaceProvider, getStoredToken } from "@/lib/workspace-store";
 
-const STORAGE_KEY = "stackhand-state-v2";
+const STORAGE_KEY = "dockermanager-state-v2";
 
 function getApiBase(): string {
   const configured =
@@ -23,7 +23,11 @@ function getApiBase(): string {
     process.env.API_URL;
   if (configured) return configured.replace(/\/$/, "");
   if (typeof window !== "undefined") return "/api";
-  return "http://127.0.0.1:4000/api";
+  const backendOrigin =
+    (typeof import.meta !== "undefined" &&
+      (import.meta.env as any)?.VITE_DOCKERMANAGER_BACKEND_ORIGIN) ||
+    "http://127.0.0.1:22443";
+  return `${backendOrigin.replace(/\/$/, "")}/api`;
 }
 
 async function fetchWorkspaces(): Promise<{ id: string; name: string; color: string }[]> {
@@ -156,14 +160,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Stackhand — Docker & YAML stack manager" },
+      { title: "Docker Manager — Docker & YAML stack manager" },
       {
         name: "description",
         content:
-          "Stackhand is a personal Docker/YAML stack manager. Organize workspaces, edit compose files, monitor containers, and get AI help — all in one clean interface.",
+          "Docker Manager is a personal Docker/YAML stack manager. Organize workspaces, edit compose files, monitor containers, and get AI help — all in one clean interface.",
       },
-      { name: "author", content: "Stackhand" },
-      { property: "og:title", content: "Stackhand — Docker & YAML stack manager" },
+      { name: "author", content: "Docker Manager" },
+      { property: "og:title", content: "Docker Manager — Docker & YAML stack manager" },
       {
         property: "og:description",
         content:

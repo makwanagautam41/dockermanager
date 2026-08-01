@@ -11,7 +11,7 @@ export const Route = createFileRoute("/_app/setup")({
   component: SetupPage,
   head: () => ({
     meta: [
-      { title: "Setup · Stackhand" },
+      { title: "Setup · Docker Manager" },
       { name: "description", content: "Docker engine status and setup." },
     ],
   }),

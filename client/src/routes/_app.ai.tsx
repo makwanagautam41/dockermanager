@@ -57,7 +57,7 @@ export const Route = createFileRoute("/_app/ai")({
   component: AIPage,
   head: () => ({
     meta: [
-      { title: "AI Studio · Stackhand" },
+      { title: "AI Studio · Docker Manager" },
       {
         name: "description",
         content:
@@ -79,7 +79,7 @@ interface PastedAttachment {
   content: string;
 }
 
-const STORAGE_KEY_PREFIX = "stackhand-ai-studio";
+const STORAGE_KEY_PREFIX = "dockermanager-ai-studio";
 
 function getStorageKey(wsId: string | null | undefined) {
   return wsId ? `${STORAGE_KEY_PREFIX}-${wsId}` : STORAGE_KEY_PREFIX;
@@ -185,7 +185,7 @@ function AIPage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [model, setModel] = useState<string>(() => {
     try {
-      return localStorage.getItem("stackhand-ai-model") || "";
+      return localStorage.getItem("dockermanager-ai-model") || "";
     } catch {
       return "";
     }
@@ -227,7 +227,7 @@ function AIPage() {
 
   const [searchEngine, setSearchEngine] = useState(() => {
     try {
-      return localStorage.getItem("stackhand-search-engine") || "google";
+      return localStorage.getItem("dockermanager-search-engine") || "google";
     } catch {
       return "google";
     }
@@ -237,13 +237,13 @@ function AIPage() {
   useEffect(() => {
     searchEngineRef.current = searchEngine;
     try {
-      localStorage.setItem("stackhand-search-engine", searchEngine);
+      localStorage.setItem("dockermanager-search-engine", searchEngine);
     } catch {}
   }, [searchEngine]);
 
   useEffect(() => {
     try {
-      localStorage.setItem("stackhand-ai-model", model);
+      localStorage.setItem("dockermanager-ai-model", model);
     } catch {}
   }, [model]);
 

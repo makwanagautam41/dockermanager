@@ -6,9 +6,8 @@ import { CreateAiSessionDto, UpdateAiSessionDto, CreateAiMessageDto, UpdateAiMes
 export class AiSessionService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(workspaceId: string) {
+  async findAll() {
     return this.prisma.aiSession.findMany({
-      where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
       include: { _count: { select: { messages: true } } },
     });
@@ -26,7 +25,6 @@ export class AiSessionService {
   async create(dto: CreateAiSessionDto) {
     return this.prisma.aiSession.create({
       data: {
-        workspaceId: dto.workspaceId,
         name: dto.name,
         model: dto.model ?? '',
         options: dto.options ? JSON.stringify(dto.options) : '{}',

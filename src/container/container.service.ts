@@ -10,27 +10,10 @@ const docker = getDockerClient();
 export class ContainerService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(workspaceId?: string) {
+  async findAll() {
     const containers = await docker.listContainers({ all: true });
 
-    // If filtering by workspace, get the stack IDs for that workspace
-    let allowedDockerIds: Set<string> | null = null;
-    if (workspaceId) {
-      const stacks = await this.prisma.stack.findMany({
-        where: { workspaceId },
-        include: { containers: { select: { dockerId: true } } },
-      });
-      allowedDockerIds = new Set<string>();
-      for (const s of stacks) {
-        for (const c of s.containers) {
-          allowedDockerIds.add(c.dockerId);
-        }
-      }
-    }
-
-    return containers
-      .filter((c) => !allowedDockerIds || allowedDockerIds.has(c.Id))
-      .map((c) => ({
+    return containers.map((c) => ({
         id: c.Id,
         name: c.Names?.[0]?.replace(/^\//, '') ?? '',
         image: c.Image,

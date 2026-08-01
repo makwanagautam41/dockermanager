@@ -1,4 +1,4 @@
-# Stackhand
+# Docker Manager
 
 Personal Docker/YAML stack manager — manage docker-compose stacks, containers, images, volumes, and Ollama AI from a web UI.
 
@@ -20,17 +20,17 @@ The frontend dev server proxies `/api` and `/socket.io` to the NestJS backend.
 Add the following to your shell config (`~/.zshrc`, `~/.bashrc`, or `~/.config/shell/common.sh`):
 
 ```bash
-STACKHAND_DIR="$HOME/Workspace/stackhand"
-SH_API_LOG="$STACKHAND_DIR/stackhand-api.log"
-SH_UI_LOG="$STACKHAND_DIR/stackhand-ui.log"
+DOCKERMANAGER_DIR="$HOME/Workspace/dockermanager"
+SH_API_LOG="$DOCKERMANAGER_DIR/dockermanager-api.log"
+SH_UI_LOG="$DOCKERMANAGER_DIR/dockermanager-ui.log"
 
-stackhand() {
-  local api_pid_file="$STACKHAND_DIR/.api.pid"
-  local ui_pid_file="$STACKHAND_DIR/.ui.pid"
+dockermanager() {
+  local api_pid_file="$DOCKERMANAGER_DIR/.api.pid"
+  local ui_pid_file="$DOCKERMANAGER_DIR/.ui.pid"
 
   case "${1:-start}" in
     start)
-      cd "$STACKHAND_DIR" || return 1
+      cd "$DOCKERMANAGER_DIR" || return 1
       [ ! -f dist/src/main.js ] && npm run build
       # Start backend (API)
       nohup node dist/src/main.js >> "$SH_API_LOG" 2>&1 &
@@ -38,8 +38,8 @@ stackhand() {
       # Start frontend (SSR dev server)
       cd client && nohup npx vite dev --host 0.0.0.0 >> "$SH_UI_LOG" 2>&1 &
       echo $! > "$ui_pid_file"
-      cd "$STACKHAND_DIR"
-      echo "Stackhand started"
+      cd "$DOCKERMANAGER_DIR"
+      echo "Docker Manager started"
       echo "  API:  http://localhost:${PORT:-22443}"
       echo "  UI:   http://localhost:${FRONTEND_PORT:-22080}"
       ;;
@@ -50,21 +50,21 @@ stackhand() {
       $stopped && echo "Stopped" || echo "Not running"
       ;;
     restart)
-      stackhand stop; sleep 1; stackhand start
+      dockermanager stop; sleep 1; dockermanager start
       ;;
     build)
-      cd "$STACKHAND_DIR" && npm run build
+      cd "$DOCKERMANAGER_DIR" && npm run build
       ;;
     logs)
       local f="${2:-api}"
       case "$f" in
         api) tail -f "$SH_API_LOG" ;;
         ui)  tail -f "$SH_UI_LOG" ;;
-        *)   echo "Usage: stackhand logs {api|ui}" ;;
+        *)   echo "Usage: dockermanager logs {api|ui}" ;;
       esac
       ;;
     *)
-      echo "Usage: stackhand {start|stop|restart|build|logs [api|ui]}"
+      echo "Usage: dockermanager {start|stop|restart|build|logs [api|ui]}"
       ;;
   esac
 }
@@ -73,24 +73,24 @@ stackhand() {
 Then reload your shell and use:
 
 ```bash
-stackhand start       # Build (if needed) + start API + UI
-stackhand stop        # Stop both servers
-stackhand restart     # Restart
-stackhand build       # Rebuild only
-stackhand logs        # Tail API logs
-stackhand logs ui     # Tail frontend logs
+dockermanager start       # Build (if needed) + start API + UI
+dockermanager stop        # Stop both servers
+dockermanager restart     # Restart
+dockermanager build       # Rebuild only
+dockermanager logs        # Tail API logs
+dockermanager logs ui     # Tail frontend logs
 ```
 
 The frontend (port `FRONTEND_PORT`, default 22080) proxies `/api` and `/socket.io` to the backend.
 
 ### Data Directory
 
-Persistent data (SQLite database, workspaces) lives at `~/.local/share/stackhand/`. Configure via `.env` in the repo root.
+Persistent data (SQLite database, workspaces) lives at `~/.local/share/dockermanager/`. Configure via `.env` in the repo root.
 
 ### Uninstall
 
 ```bash
-rm -rf ~/.local/share/stackhand ~/.config/stackhand
+rm -rf ~/.local/share/dockermanager ~/.config/dockermanager
 # Remove the function from your shell config
 # Optionally remove .env: git checkout -- .env
 ```
@@ -123,7 +123,7 @@ rm -rf ~/.local/share/stackhand ~/.config/stackhand
 ├── client/            # TanStack Start (React SSR) frontend
 ├── prisma/            # Prisma schema & migrations
 ├── scripts/           # CLI wrapper & installer
-│   ├── stackhand      # CLI command (installed to /usr/local/bin/)
+│   ├── dockermanager      # CLI command (installed to /usr/local/bin/)
 │   └── install.sh     # System-wide installer
 ├── workspaces-data/   # SQLite database (dev — gitignored)
 ├── .env               # Environment variables
@@ -152,7 +152,7 @@ rm -rf ~/.local/share/stackhand ~/.config/stackhand
 
 ### Auth
 
-All `/api` routes require `Authorization: Bearer <STACKHAND_API_TOKEN>` header.  
+All `/api` routes require `Authorization: Bearer <DOCKERMANAGER_API_TOKEN>` header.  
 The `/api/health` endpoint is public.
 
 ### Modules & Endpoints
@@ -195,13 +195,13 @@ See `.env.example`. Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `STACKHAND_API_TOKEN` | — | Bearer token for API auth (required) |
+| `DOCKERMANAGER_API_TOKEN` | — | Bearer token for API auth (required) |
 | `PORT` | `22443` | Backend port |
 | `FRONTEND_PORT` | `22080` | Frontend dev server port |
 | `HOST` | `0.0.0.0` | Backend bind host |
 | `DEFAULT_WORKSPACE_ROOT` | — | Default directory for workspace stacks |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `DATABASE_URL` | `file:./workspaces-data/stackhand.db` | SQLite database path |
+| `DATABASE_URL` | `file:./workspaces-data/dockermanager.db` | SQLite database path |
 
 ---
 

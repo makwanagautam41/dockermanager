@@ -53,7 +53,7 @@ export const Route = createFileRoute("/_app/volumes")({
   component: VolumesPage,
   head: () => ({
     meta: [
-      { title: "Volumes · Stackhand" },
+      { title: "Volumes · Docker Manager" },
       { name: "description", content: "Docker volumes management." },
     ],
   }),

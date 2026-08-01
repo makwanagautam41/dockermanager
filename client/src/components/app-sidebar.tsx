@@ -6,7 +6,6 @@ import {
   IconFileCode,
   IconRobot,
   IconSettings,
-  IconStack2,
   IconGauge,
   IconBell,
   IconFileText,
@@ -26,7 +25,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 
 const GROUPS = [
   {
@@ -40,7 +38,6 @@ const GROUPS = [
   {
     label: "Manage",
     items: [
-      { title: "Stacks", to: "/stacks", icon: IconStack2 },
       { title: "Containers", to: "/containers", icon: IconBrandDocker },
       { title: "Images", to: "/images", icon: IconPhoto },
       { title: "Volumes", to: "/volumes", icon: IconDatabase },
@@ -79,16 +76,13 @@ export function AppSidebar() {
           </div>
           <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-mono text-sm font-semibold tracking-tight">
-              stackhand
+              Docker Manager
             </span>
             <span className="truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               stack manager
             </span>
           </div>
         </Link>
-        <div className="mt-3 group-data-[collapsible=icon]:hidden">
-          <WorkspaceSwitcher compact />
-        </div>
       </SidebarHeader>
       <SidebarContent>
         {GROUPS.map((g) => (

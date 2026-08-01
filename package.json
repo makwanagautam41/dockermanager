@@ -1,42 +1,30 @@
 {
-  "name": "stackhand",
+  "name": "dockermanager",
   "version": "1.0.0",
   "description": "Personal Docker/YAML stack manager",
   "private": true,
   "type": "commonjs",
   "license": "UNLICENSED",
   "scripts": {
-    "============ FIRST TIME ============": "",
-    "setup": "bash scripts/setup.sh",
-    "env:setup": "bash scripts/env-setup.sh",
-    "============ DEVELOPMENT ============": "",
-    "dev": "npm run kill:ports && npm run dev:db:sync && DATABASE_URL=\"file:./workspaces-data/dev.db\" NODE_ENV=development concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "nest start --watch",
     "dev:frontend": "cd client && npm run dev",
-    "dev:db:sync": "DATABASE_URL=\"file:./workspaces-data/dev.db\" npx prisma db push --accept-data-loss",
-    "============ PRODUCTION ============": "",
-    "start": "bash scripts/start-production.sh",
-    "stop": "bash scripts/stop.sh",
-    "restart": "bash scripts/restart.sh",
-    "update": "bash scripts/update.sh",
-    "install": "sudo bash scripts/install-service.sh",
-    "uninstall": "sudo bash scripts/uninstall.sh",
-    "============ BUILD ============": "",
+    "start:prod": "node dist/src/main",
     "build": "nest build && npm run build:frontend",
     "build:frontend": "cd client && npm run build",
-    "============ DATABASE ============": "",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:prod": "prisma migrate deploy",
-    "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:reset": "bash scripts/db-reset.sh",
-    "============ UTILITY ============": "",
+    "db:reset": "prisma migrate reset",
+    "compose:up": "docker volume create dockermanager_prod_data && docker compose -f backend/docker-compose.yml --env-file .env up -d --build",
+    "compose:down": "docker compose -f backend/docker-compose.yml down",
+    "compose:logs": "docker compose -f backend/docker-compose.yml logs -f",
     "kill:ports": "fuser -k ${PORT:-22443}/tcp 2>/dev/null; fuser -k ${FRONTEND_PORT:-22080}/tcp 2>/dev/null; true",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "clean": "bash scripts/clean.sh"
+    "clean": "rm -rf dist client/dist client/.output"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -47,15 +35,15 @@
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/swagger": "^11.1.3",
     "@nestjs/websockets": "^11.0.16",
-    "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "better-sqlite3": "^11.10.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "compression": "^1.8.1",
     "dockerode": "^4.0.5",
     "helmet": "^8.2.0",
     "js-yaml": "^4.1.0",
+    "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
@@ -93,13 +81,19 @@
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

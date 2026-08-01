@@ -86,7 +86,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Stackhand API')
+    .setTitle('Docker Manager API')
     .setDescription('Personal Docker/YAML stack manager API')
     .setVersion('1.0')
     .addBearerAuth()
@@ -102,7 +102,7 @@ async function bootstrap() {
 
   await app.listen(port, host);
   const printableHost = host === '0.0.0.0' ? '127.0.0.1' : host;
-  logger.log(`Stackhand backend running on http://${printableHost}:${port}`);
+  logger.log(`Docker Manager backend running on http://${printableHost}:${port}`);
   logger.log(`Swagger docs at http://${printableHost}:${port}/api/docs`);
 }
 

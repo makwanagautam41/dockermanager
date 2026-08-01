@@ -35,7 +35,7 @@ import type { AlertRule } from "@/lib/types";
 
 export const Route = createFileRoute("/_app/alerts")({
   component: AlertsPage,
-  head: () => ({ meta: [{ title: "Alerts · Stackhand" }] }),
+  head: () => ({ meta: [{ title: "Alerts · Docker Manager" }] }),
 });
 
 const CONDS: { id: AlertRule["condition"]; label: string; example: string }[] = [

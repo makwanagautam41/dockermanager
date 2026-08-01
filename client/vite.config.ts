@@ -30,8 +30,8 @@ function readRootEnv() {
 
 function getBackendOrigin(rootEnv: Map<string, string>) {
   const explicit =
-    process.env.STACKHAND_BACKEND_ORIGIN ||
-    rootEnv.get("STACKHAND_BACKEND_ORIGIN");
+    process.env.DOCKERMANAGER_BACKEND_ORIGIN ||
+    rootEnv.get("DOCKERMANAGER_BACKEND_ORIGIN");
   if (explicit) return explicit.replace(/\/$/, "");
 
   const host = process.env.HOST || rootEnv.get("HOST") || "127.0.0.1";
@@ -48,11 +48,21 @@ function getFrontendPort(rootEnv: Map<string, string>) {
 }
 
 function getApiToken(rootEnv: Map<string, string>) {
-  return process.env.STACKHAND_API_TOKEN || rootEnv.get("STACKHAND_API_TOKEN") || "dev-token";
+  return process.env.DOCKERMANAGER_API_TOKEN || rootEnv.get("DOCKERMANAGER_API_TOKEN") || "dev-token";
 }
 
 function getDefaultWorkspaceRoot(rootEnv: Map<string, string>) {
-  return process.env.DEFAULT_WORKSPACE_ROOT || rootEnv.get("DEFAULT_WORKSPACE_ROOT") || "";
+  const configured = process.env.DEFAULT_WORKSPACE_ROOT || rootEnv.get("DEFAULT_WORKSPACE_ROOT");
+  if (configured) {
+    const resolved = path.isAbsolute(configured)
+      ? configured
+      : path.resolve(here, "..", configured);
+    if (fs.existsSync(resolved)) return resolved;
+  }
+
+ // Keep the local Explorer usable when .env still points at a machine-specific
+ // path that is not present in the current checkout.
+  return path.resolve(here, "..", "docker-yaml-files");
 }
 
 const rootEnv = readRootEnv();
@@ -67,7 +77,8 @@ export default defineConfig({
   },
   vite: {
     define: {
-      "import.meta.env.VITE_STACKHAND_API_TOKEN": JSON.stringify(apiToken),
+      "import.meta.env.VITE_DOCKERMANAGER_API_TOKEN": JSON.stringify(apiToken),
+      "import.meta.env.VITE_DOCKERMANAGER_BACKEND_ORIGIN": JSON.stringify(backendOrigin),
       "import.meta.env.VITE_DEFAULT_WORKSPACE_ROOT": JSON.stringify(defaultWorkspaceRoot),
     },
     server: {

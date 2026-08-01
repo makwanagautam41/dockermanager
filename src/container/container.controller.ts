@@ -22,10 +22,9 @@ export class ContainerController {
   constructor(private service: ContainerService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List containers (optionally filtered by workspace)' })
-  @ApiQuery({ name: 'workspaceId', required: false })
-  findAll(@Query('workspaceId') workspaceId?: string) {
-    return this.service.findAll(workspaceId);
+  @ApiOperation({ summary: 'List containers' })
+  findAll() {
+    return this.service.findAll();
   }
 
   @Get(':id')
