@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -8,17 +8,13 @@ import { ShortcutsDialog } from "@/components/shortcuts-dialog";
 import { FullPageLoader } from "@/components/loader";
 import { useWorkspaces } from "@/lib/workspace-store";
 
-export const Route = createFileRoute("/_app")({
-  component: AppLayout,
-});
-
-function AppLayout() {
+export default function AppLayout() {
   const { hydrated, workspaces, current, error, refresh, loading } = useWorkspaces();
   const navigate = useNavigate();
   const [dismissedError, setDismissedError] = useState(false);
 
   useEffect(() => {
-    if (hydrated && workspaces.length === 0) navigate({ to: "/onboarding" });
+    if (hydrated && workspaces.length === 0) navigate("/onboarding");
   }, [hydrated, workspaces.length, navigate]);
 
   if (!hydrated) {
@@ -65,4 +61,3 @@ function AppLayout() {
     </SidebarProvider>
   );
 }
-

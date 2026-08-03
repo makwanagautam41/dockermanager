@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
@@ -45,15 +44,7 @@ import { PageSkeleton } from "@/components/page-skeleton";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/registry")({
-  component: RegistryPage,
-  head: () => ({
-    meta: [
-      { title: "Registry · Docker Manager" },
-      { name: "description", content: "Docker Hub registry explorer." },
-    ],
-  }),
-});
+
 
 interface RegistryImage {
   name: string;
@@ -199,7 +190,7 @@ const POPULAR_SECTIONS = [
 ];
 
 /* ── component ── */
-function RegistryPage() {
+export default function RegistryPage() {
   const [q, setQ] = useState("");
   const [searchResults, setSearchResults] = useState<RegistryImage[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);

@@ -1,5 +1,4 @@
 import { uuid } from "@/lib/utils";
-import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconEye, IconEyeOff, IconFileText, IconPlus, IconTrash, IconUpload } from "@tabler/icons-react";
@@ -23,12 +22,9 @@ import { useWorkspaces } from "@/lib/workspace-store";
 import type { EnvFileEntry, EnvVar } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/env")({
-  component: EnvPage,
-  head: () => ({ meta: [{ title: "Env files · Docker Manager" }] }),
-});
 
-function EnvPage() {
+
+export default function EnvPage() {
   const { current, envFilesByWs, updateEnvFile, addEnvFile } = useWorkspaces();
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");

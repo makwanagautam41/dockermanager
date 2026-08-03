@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -41,17 +41,9 @@ import { api } from "@/lib/api";
 import { WORKSPACE_COLORS, WORKSPACE_ICONS } from "@/lib/constants";
 import { getWorkspaceIcon } from "@/lib/icon-map";
 
-export const Route = createFileRoute("/_app/settings")({
-  component: SettingsPage,
-  head: () => ({
-    meta: [
-      { title: "Settings · Docker Manager" },
-      { name: "description", content: "Workspace, appearance, and Ollama settings." },
-    ],
-  }),
-});
 
-function SettingsPage() {
+
+export default function SettingsPage() {
   const { current, updateWorkspace, deleteWorkspace, density, setDensity, exportAll, importAll } =
     useWorkspaces();
   const importRef = useRef<HTMLInputElement>(null);
@@ -355,7 +347,7 @@ function SettingsPage() {
                   deleteWorkspace(id);
                   setDeleteOpen(false);
                   toast.success("Workspace deleted");
-                  navigate({ to: "/" });
+                  navigate("/");
                 } catch (e: any) {
                   toast.error(e.message ?? "Failed to delete workspace");
                 }

@@ -24,7 +24,8 @@ const TOKEN_KEY = "dockermanager-api-token";
 
 function getApiBase(): string {
   const configured =
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || process.env.API_URL;
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+    (typeof process !== "undefined" && process.env.API_URL);
   if (configured) return configured.replace(/\/$/, "");
 
   // In the browser, default to the current origin so the Vite proxy or
@@ -368,7 +369,13 @@ export const api = {
   },
 
   async containerLogs(id: string, tail = 200) {
-    return request<string>(`/containers/${id}/logs?tail=${tail}`);
+    const res = await fetch(`${getApiBase()}/containers/${id}/logs?tail=${tail}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return res.text();
   },
 
   // ---- Images ----

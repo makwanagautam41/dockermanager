@@ -16,6 +16,8 @@ import { RegistryModule } from './registry/registry.module';
 import { DatabaseModule } from './database/database.module';
 import { AiSessionModule } from './ai-session/ai-session.module';
 import { SearchModule } from './search/search.module';
+import { ComposeModule } from './compose/compose.module';
+import { GatewayModule } from './gateway/gateway.module';
 import { HealthController } from './health.controller';
 import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/http-exception.filter';
@@ -39,6 +41,8 @@ import { CommonModule } from './common/common.module';
     DatabaseModule,
     AiSessionModule,
     SearchModule,
+    ComposeModule,
+    GatewayModule,
     CommonModule,
   ],
   controllers: [HealthController],

@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { IconPhoto, IconTrash, IconRefresh, IconSearch, IconPlayerPlay } from "@tabler/icons-react";
@@ -31,17 +30,9 @@ import { api } from "@/lib/api";
 import { emitSync, onSync, SYNC_EVENTS } from "@/lib/utils";
 import type { BackendImage } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/images")({
-  component: ImagesPage,
-  head: () => ({
-    meta: [
-      { title: "Images · Docker Manager" },
-      { name: "description", content: "Local Docker images." },
-    ],
-  }),
-});
 
-function ImagesPage() {
+
+export default function ImagesPage() {
   const [images, setImages] = useState<BackendImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");

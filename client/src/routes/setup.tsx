@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { IconBrandDocker, IconCircleFilled } from "@tabler/icons-react";
 import { Card } from "@/components/ui/card";
@@ -7,17 +6,9 @@ import { api } from "@/lib/api";
 import type { DockerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/setup")({
-  component: SetupPage,
-  head: () => ({
-    meta: [
-      { title: "Setup · Docker Manager" },
-      { name: "description", content: "Docker engine status and setup." },
-    ],
-  }),
-});
 
-function SetupPage() {
+
+export default function SetupPage() {
   const [status, setStatus] = useState<DockerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -1,5 +1,5 @@
 import { uuid } from "@/lib/utils";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -40,12 +40,8 @@ import { LogsViewer } from "@/components/logs-viewer";
 import { useWorkspaces } from "@/lib/workspace-store";
 import type { ContainerStatus, YamlVersion } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/stacks/$stackId")({
-  component: StackDetail,
-});
-
-function StackDetail() {
-  const { stackId } = Route.useParams();
+export default function StackDetail() {
+  const { stackId } = useParams<{ stackId: string }>();
   const navigate = useNavigate();
   const {
     current,
@@ -67,7 +63,7 @@ function StackDetail() {
     return (
       <div className="text-center">
         <p className="text-sm text-muted-foreground">Stack not found.</p>
-        <Button variant="ghost" className="mt-2" onClick={() => navigate({ to: "/stacks" })}>
+        <Button variant="ghost" className="mt-2" onClick={() => navigate("/stacks")}>
           Back
         </Button>
       </div>

@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -65,15 +64,7 @@ import type { EnvVar, YamlFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as yaml from "js-yaml";
 
-export const Route = createFileRoute("/_app/yaml")({
-  component: YamlPage,
-  head: () => ({
-    meta: [
-      { title: "Explorer · Docker Manager" },
-      { name: "description", content: "Browse and edit files across your workspace." },
-    ],
-  }),
-});
+
 
 type DirHandle = {
   name: string;
@@ -88,7 +79,7 @@ type DirHandle = {
   }>;
 };
 
-function YamlPage() {
+export default function YamlPage() {
   const {
     current,
     treeByWs,

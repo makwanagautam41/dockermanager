@@ -279,12 +279,28 @@ export class RegistryService {
     yaml: string;
     description?: string;
   }) {
-    const folderPath = path.join(data.workspaceRoot, data.folderName);
+    const rootRaw =
+      data.workspaceRoot?.trim() || process.env.DEFAULT_WORKSPACE_ROOT?.trim() || 'docker-yaml-files';
+    const root = path.resolve(rootRaw);
+    if (!fs.existsSync(root)) {
+      fs.mkdirSync(root, { recursive: true });
+    }
+    const folderPath = path.resolve(root, data.folderName);
+    if (folderPath !== root && !folderPath.startsWith(root + path.sep)) {
+      throw new BadRequestException(
+        `Access denied: folder is outside the workspace root (${root})`,
+      );
+    }
     if (fs.existsSync(folderPath)) {
       throw new BadRequestException('Folder already exists');
     }
     fs.mkdirSync(folderPath, { recursive: true });
     const composePath = path.join(folderPath, 'docker-compose.yml');
+    try {
+      yaml.load(data.yaml);
+    } catch (e: any) {
+      throw new BadRequestException(`YAML validation error: ${e.message}`);
+    }
     fs.writeFileSync(composePath, data.yaml, 'utf-8');
     if (data.description) {
       fs.writeFileSync(

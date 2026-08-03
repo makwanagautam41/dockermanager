@@ -6,10 +6,54 @@ import { resolveSafePath } from '../common/resolve-path';
 
 @Injectable()
 export class FilesystemService {
+  private rootPath(): string {
+    const root = process.env.DEFAULT_WORKSPACE_ROOT?.trim();
+    return root ? path.resolve(root) : path.resolve('docker-yaml-files');
+  }
+
+  private stripRootBasename(rel: string): string {
+    const baseName = path.basename(this.rootPath());
+    if (
+      rel === baseName ||
+      rel.startsWith(`${baseName}/`) ||
+      rel.startsWith(`${baseName}\\`)
+    ) {
+      return rel.slice(baseName.length).replace(/^[/\\]+/, '') || '.';
+    }
+    return rel;
+  }
+
+  private ensureInsideRoot(target: string): string {
+    const root = this.rootPath();
+    const resolved = path.resolve(target);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw new BadRequestException(
+        `Access denied: path is outside the workspace root (${root})`,
+      );
+    }
+    return resolved;
+  }
+
+  resolveBase(basePath?: string): string {
+    const root = this.rootPath();
+    if (!basePath || basePath === '.') return root;
+    const rel = this.stripRootBasename(basePath.trim());
+    if (path.isAbsolute(rel)) return this.ensureInsideRoot(rel);
+    return this.ensureInsideRoot(path.resolve(root, rel));
+  }
+
+  private ensureRoot(target: string) {
+    if (!fs.existsSync(target)) {
+      fs.mkdirSync(target, { recursive: true });
+    }
+  }
+
   browse(basePath: string, subPath?: string) {
+    const resolvedBase = this.resolveBase(basePath);
+    this.ensureRoot(resolvedBase);
     const target = subPath
-      ? resolveSafePath(basePath, subPath)
-      : path.resolve(basePath);
+      ? resolveSafePath(resolvedBase, subPath)
+      : resolvedBase;
     this.ensureExists(target);
     const entries = fs.readdirSync(target, { withFileTypes: true });
     return entries.map((e) => {
@@ -25,10 +69,13 @@ export class FilesystemService {
   }
 
   getTree(basePath: string, subPath?: string) {
+    const resolvedBase = this.resolveBase(basePath);
     const target = subPath
-      ? resolveSafePath(basePath, subPath)
-      : path.resolve(basePath);
-    if (!fs.existsSync(target)) return null;
+      ? resolveSafePath(resolvedBase, subPath)
+      : resolvedBase;
+    if (!fs.existsSync(target)) {
+      this.ensureRoot(target);
+    }
 
     const buildTree = (currentPath: string): any => {
       const stat = fs.statSync(currentPath);
@@ -62,13 +109,15 @@ export class FilesystemService {
   }
 
   readFile(filePath: string) {
-    this.ensureExists(filePath);
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return { path: filePath, content };
+    const resolved = this.resolveFilePath(filePath);
+    this.ensureExists(resolved);
+    const content = fs.readFileSync(resolved, 'utf-8');
+    return { path: resolved, content };
   }
 
   writeFile(filePath: string, content: string) {
-    const ext = path.extname(filePath).toLowerCase();
+    const resolved = this.resolveFilePath(filePath);
+    const ext = path.extname(resolved).toLowerCase();
     if (ext === '.yml' || ext === '.yaml') {
       try {
         yaml.load(content);
@@ -76,16 +125,23 @@ export class FilesystemService {
         throw new BadRequestException(`YAML validation error: ${e.message}`);
       }
     }
-    const dir = path.dirname(filePath);
+    const dir = path.dirname(resolved);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, content, 'utf-8');
-    return { path: filePath, content };
+    fs.writeFileSync(resolved, content, 'utf-8');
+    return { path: resolved, content };
+  }
+
+  private resolveFilePath(filePath: string): string {
+    const root = this.rootPath();
+    const rel = this.stripRootBasename(filePath.trim());
+    if (path.isAbsolute(rel)) return this.ensureInsideRoot(rel);
+    return this.ensureInsideRoot(path.resolve(root, rel));
   }
 
   createFolder(parentPath: string, name: string) {
-    const target = resolveSafePath(parentPath, name);
+    const target = resolveSafePath(this.resolveBase(parentPath), name);
     if (fs.existsSync(target)) {
       throw new BadRequestException('Folder or file already exists');
     }
@@ -94,40 +150,43 @@ export class FilesystemService {
   }
 
   rename(oldPath: string, newName: string) {
-    this.ensureExists(oldPath);
-    const dir = path.dirname(oldPath);
+    const resolved = this.resolveFilePath(oldPath);
+    this.ensureExists(resolved);
+    const dir = path.dirname(resolved);
     const newPath = path.join(dir, newName);
     if (fs.existsSync(newPath)) {
       throw new BadRequestException('Target name already exists');
     }
-    fs.renameSync(oldPath, newPath);
-    return { oldPath, newPath };
+    fs.renameSync(resolved, newPath);
+    return { oldPath: resolved, newPath };
   }
 
   delete(targetPath: string) {
-    this.ensureExists(targetPath);
-    const stat = fs.statSync(targetPath);
+    const resolved = this.resolveFilePath(targetPath);
+    this.ensureExists(resolved);
+    const stat = fs.statSync(resolved);
     if (stat.isDirectory()) {
-      fs.rmSync(targetPath, { recursive: true, force: true });
+      fs.rmSync(resolved, { recursive: true, force: true });
     } else {
-      fs.unlinkSync(targetPath);
+      fs.unlinkSync(resolved);
     }
-    return { deleted: targetPath };
+    return { deleted: resolved };
   }
 
   duplicate(filePath: string) {
-    this.ensureExists(filePath);
-    const dir = path.dirname(filePath);
-    const ext = path.extname(filePath);
-    const base = path.basename(filePath, ext);
+    const resolved = this.resolveFilePath(filePath);
+    this.ensureExists(resolved);
+    const dir = path.dirname(resolved);
+    const ext = path.extname(resolved);
+    const base = path.basename(resolved, ext);
     let copyPath = path.join(dir, `${base}-copy${ext}`);
     let idx = 1;
     while (fs.existsSync(copyPath)) {
       copyPath = path.join(dir, `${base}-copy-${idx}${ext}`);
       idx++;
     }
-    fs.copyFileSync(filePath, copyPath);
-    return { original: filePath, copy: copyPath };
+    fs.copyFileSync(resolved, copyPath);
+    return { original: resolved, copy: copyPath };
   }
 
   private ensureExists(p: string) {

@@ -18,12 +18,18 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Docker CLI + Compose v2 plugin so the backend can run `docker compose` via the mounted docker.sock
+RUN apk add --no-cache docker-cli docker-cli-compose
+
 # Copy built artifacts and dependencies
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+
+# Ensure the YAML workspace directory exists in the image (host mount overrides it)
+RUN mkdir -p /app/docker-yaml-files
 
 EXPOSE 22443
 

@@ -1,5 +1,5 @@
+import { useNavigate } from "react-router-dom";
 import { uuid } from "@/lib/utils";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -53,19 +53,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { api, getStoredToken } from "@/lib/api";
 
-export const Route = createFileRoute("/_app/ai")({
-  component: AIPage,
-  head: () => ({
-    meta: [
-      { title: "AI Studio · Docker Manager" },
-      {
-        name: "description",
-        content:
-          "Chat with local LLMs via Ollama. Generate stacks, run custom prompts, and monitor generation stats.",
-      },
-    ],
-  }),
-});
+
 
 interface ChatSession {
   id: string;
@@ -91,7 +79,7 @@ function getStorageKey(wsId: string | null | undefined) {
 const PASTE_CHAR_THRESHOLD = 400;
 const PASTE_LINE_THRESHOLD = 10;
 
-function AIPage() {
+export default function AIPage() {
   const { current } = useWorkspaces();
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState("");

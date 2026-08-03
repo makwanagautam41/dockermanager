@@ -1,26 +1,44 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  Outlet,
-  Link,
-  createRootRouteWithContext,
-  useRouter,
-  HeadContent,
-  Scripts,
-} from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+  Component,
+  StrictMode,
+  useEffect,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
-
-import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { WorkspaceProvider, getStoredToken } from "@/lib/workspace-store";
+import { reportLovableError } from "@/lib/lovable-error-reporting";
+import "./index.css";
+
+import Index from "./routes/index";
+import OnboardingRoute from "./routes/onboarding";
+import AppLayout from "./routes/app-layout";
+import DashboardPage from "./routes/dashboard";
+import MetricsPage from "./routes/metrics";
+import AlertsPage from "./routes/alerts";
+import ContainersPage from "./routes/containers";
+import ImagesPage from "./routes/images";
+import VolumesPage from "./routes/volumes";
+import RegistryPage from "./routes/registry";
+import YamlPage from "./routes/yaml";
+import EnvPage from "./routes/env";
+import AIPage from "./routes/ai";
+import SetupPage from "./routes/setup";
+import SettingsPage from "./routes/settings";
+import StacksRedirect from "./routes/redirect-stacks";
+import StackDetail from "./routes/stack-detail";
 
 const STORAGE_KEY = "dockermanager-state-v2";
 
 function getApiBase(): string {
   const configured =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    process.env.API_URL;
+    (typeof process !== "undefined" && process.env.API_URL);
   if (configured) return configured.replace(/\/$/, "");
   if (typeof window !== "undefined") return "/api";
   const backendOrigin =
@@ -74,15 +92,30 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
-  const router = useRouter();
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(error, info);
+    reportLovableError(error, { boundary: "react_error_boundary" });
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <ErrorComponent error={this.state.error} onReset={() => this.setState({ error: null })} />;
+  }
+}
+
+function ErrorComponent({ error, onReset }: { error: Error; onReset: () => void }) {
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string; color: string }[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   useEffect(() => {
     fetchWorkspaces().then((ws) => {
@@ -124,10 +157,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         )}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
-            onClick={() => {
-              router.invalidate();
-              reset();
-            }}
+            onClick={onReset}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try again
@@ -155,67 +185,41 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Docker Manager — Docker & YAML stack manager" },
-      {
-        name: "description",
-        content:
-          "Docker Manager is a personal Docker/YAML stack manager. Organize workspaces, edit compose files, monitor containers, and get AI help — all in one clean interface.",
-      },
-      { name: "author", content: "Docker Manager" },
-      { property: "og:title", content: "Docker Manager — Docker & YAML stack manager" },
-      {
-        property: "og:description",
-        content:
-          "Organize Docker compose stacks across workspaces with a fast, keyboard-friendly UI.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap",
-      },
-      { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/docker.svg", type: "image/svg+xml" },
-    ],
-  }),
-  shellComponent: RootShell,
-  component: RootComponent,
-  notFoundComponent: NotFoundComponent,
-  errorComponent: ErrorComponent,
-});
+const queryClient = new QueryClient();
 
-function RootShell({ children }: { children: ReactNode }) {
-  return (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body onContextMenu={(e) => e.preventDefault()}>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  );
-}
-
-function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <WorkspaceProvider>
-          <Outlet />
-          <Toaster richColors position="top-right" />
-        </WorkspaceProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
-  );
-}
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <WorkspaceProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/onboarding" element={<OnboardingRoute />} />
+                <Route element={<AppLayout />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/metrics" element={<MetricsPage />} />
+                  <Route path="/alerts" element={<AlertsPage />} />
+                  <Route path="/containers" element={<ContainersPage />} />
+                  <Route path="/images" element={<ImagesPage />} />
+                  <Route path="/volumes" element={<VolumesPage />} />
+                  <Route path="/registry" element={<RegistryPage />} />
+                  <Route path="/yaml" element={<YamlPage />} />
+                  <Route path="/env" element={<EnvPage />} />
+                  <Route path="/ai" element={<AIPage />} />
+                  <Route path="/setup" element={<SetupPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/stacks" element={<StacksRedirect />} />
+                  <Route path="/stacks/:stackId" element={<StackDetail />} />
+                </Route>
+                <Route path="*" element={<NotFoundComponent />} />
+              </Routes>
+            </BrowserRouter>
+            <Toaster richColors position="top-right" />
+          </WorkspaceProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  </StrictMode>,
+);

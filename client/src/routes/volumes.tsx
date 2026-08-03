@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -49,15 +48,7 @@ import { PageSkeleton } from "@/components/page-skeleton";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/volumes")({
-  component: VolumesPage,
-  head: () => ({
-    meta: [
-      { title: "Volumes · Docker Manager" },
-      { name: "description", content: "Docker volumes management." },
-    ],
-  }),
-});
+
 
 interface Volume {
   name: string;
@@ -80,7 +71,7 @@ interface FileEntry {
   createdAt: string;
 }
 
-function VolumesPage() {
+export default function VolumesPage() {
   const [volumes, setVolumes] = useState<Volume[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");

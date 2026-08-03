@@ -1,16 +1,12 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
-export const Route = createFileRoute("/")({
-  component: Index,
-});
-
-function Index() {
+export default function Index() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    navigate({ to: "/dashboard" });
+    navigate("/dashboard");
   }, [navigate]);
 
   return (

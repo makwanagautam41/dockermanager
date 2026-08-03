@@ -7,7 +7,7 @@ let socket: Socket | null = null;
 function getSocketOrigin() {
   const configured =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    process.env.API_URL;
+    (typeof process !== "undefined" && process.env.API_URL);
   if (configured) {
     return configured.replace(/\/api\/?$/, "").replace(/\/$/, "");
   }

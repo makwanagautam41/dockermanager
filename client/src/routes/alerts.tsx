@@ -1,5 +1,4 @@
 import { uuid } from "@/lib/utils";
-import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { IconBell, IconPlus, IconTrash, IconInfoCircle } from "@tabler/icons-react";
@@ -33,10 +32,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useWorkspaces } from "@/lib/workspace-store";
 import type { AlertRule } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/alerts")({
-  component: AlertsPage,
-  head: () => ({ meta: [{ title: "Alerts · Docker Manager" }] }),
-});
+
 
 const CONDS: { id: AlertRule["condition"]; label: string; example: string }[] = [
   { id: "restarts>3", label: "Restart count > 3", example: "e.g., container keeps crashing — fires when restarted more than 3 times in the window" },
@@ -76,7 +72,7 @@ const EXAMPLES = [
   },
 ];
 
-function AlertsPage() {
+export default function AlertsPage() {
   const { current, alertsByWs, addAlert, updateAlert, deleteAlert, stacksByWs, pushActivity } =
     useWorkspaces();
   const [open, setOpen] = useState(false);

@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useLocation } from "react-router-dom";
 import {
   IconBrandDocker,
   IconDashboard,
@@ -62,7 +62,7 @@ const GROUPS = [
 ] as const;
 
 export function AppSidebar() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { pathname } = useLocation();
 
   return (
     <Sidebar collapsible="icon">

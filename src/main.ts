@@ -6,6 +6,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { RequestLoggerMiddleware } from './common/request-logger.middleware';
 import compression from 'compression';
 import helmet from 'helmet';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const logger = new Logger('Bootstrap');
 
@@ -51,6 +53,12 @@ function isAllowedOrigin(origin?: string) {
 }
 
 async function bootstrap() {
+  // Ensure the YAML workspace directory exists (mounted volume or local folder)
+  const workspaceRoot = process.env.DEFAULT_WORKSPACE_ROOT?.trim();
+  if (workspaceRoot) {
+    fs.mkdirSync(path.resolve(workspaceRoot), { recursive: true });
+  }
+
   const app = await NestFactory.create(AppModule, {
     logger: process.env.NODE_ENV === 'production'
       ? ['error', 'warn', 'log']

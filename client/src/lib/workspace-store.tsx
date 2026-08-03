@@ -109,7 +109,8 @@ const STORAGE_KEY = "dockermanager-state-v2";
 const TOKEN_STORAGE_KEY = "dockermanager-api-token";
 const DEFAULT_WORKSPACE_ID = "local-host";
 const DEFAULT_WORKSPACE_ROOT =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_DEFAULT_WORKSPACE_ROOT) || "";
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_DEFAULT_WORKSPACE_ROOT) ||
+  "docker-yaml-files";
 
 function createDefaultWorkspace(): Workspace {
   return {

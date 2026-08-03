@@ -1,15 +1,7 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { z } from "zod";
+import { useNavigate } from "react-router-dom";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 
-const search = z.object({ add: z.boolean().optional() });
-
-export const Route = createFileRoute("/onboarding")({
-  validateSearch: (s) => search.parse(s),
-  component: OnboardingRoute,
-});
-
-function OnboardingRoute() {
+export default function OnboardingRoute() {
   const navigate = useNavigate();
-  return <OnboardingWizard onDone={() => navigate({ to: "/dashboard" })} />;
+  return <OnboardingWizard onDone={() => navigate("/dashboard")} />;
 }

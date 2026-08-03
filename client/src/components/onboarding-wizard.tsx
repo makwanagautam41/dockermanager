@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
@@ -94,7 +94,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
       await refresh();
       toast.success(`Workspace "${name.trim()}" created`);
       onDone();
-      navigate({ to: "/dashboard" });
+      navigate("/dashboard");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -142,7 +142,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                     description: "Workspace created with starter content.",
                   });
                   onDone();
-                  navigate({ to: "/dashboard" });
+                  navigate("/dashboard");
                 }}
               >
                 <IconSparkles className="mr-1.5 h-3.5 w-3.5" stroke={1.75} /> Try sample

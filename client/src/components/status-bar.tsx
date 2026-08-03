@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link } from "react-router-dom";
 import { IconActivity, IconBrandDocker, IconTerminal2 } from "@tabler/icons-react";
 import { useWorkspaces } from "@/lib/workspace-store";
 import { cn } from "@/lib/utils";

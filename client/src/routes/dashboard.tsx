@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Link } from "react-router-dom";
 import { Bot, FolderTree, Layers, Plus, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,17 +19,9 @@ import {
 } from "recharts";
 import { StatusBadge } from "@/components/status-badge";
 
-export const Route = createFileRoute("/_app/dashboard")({
-  component: DashboardPage,
-  head: () => ({
-    meta: [
-      { title: "Dashboard · Docker Manager" },
-      { name: "description", content: "Overview of your stacks, containers and resource usage." },
-    ],
-  }),
-});
 
-function DashboardPage() {
+
+export default function DashboardPage() {
   const { current, stacksByWs, treeByWs, activityByWs, loading } = useWorkspaces();
   const tree = current ? treeByWs[current.id] : undefined;
   const [dashData, setDashData] = useState<any>(null);
@@ -47,7 +39,7 @@ function DashboardPage() {
     const fetchLive = async () => {
       try {
         const [containers, images, status] = await Promise.all([
-          api.listContainers(current?.id),
+          api.listContainers(),
           api.listImages(),
           api.dockerStatus(),
         ]);
@@ -262,8 +254,7 @@ function DashboardPage() {
             {stacks.map((s) => (
               <Link
                 key={s.id}
-                to="/stacks/$stackId"
-                params={{ stackId: s.id }}
+                to={`/stacks/${s.id}`}
                 className="flex items-center justify-between rounded-md border p-2.5 text-sm hover:bg-accent"
               >
                 <span className="truncate font-medium">{s.name}</span>

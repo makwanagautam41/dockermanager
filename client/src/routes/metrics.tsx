@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,10 +14,7 @@ import {
 import { api } from "@/lib/api";
 import { subscribeToContainerStats, stopContainerStats, useSocket } from "@/lib/socket";
 
-export const Route = createFileRoute("/_app/metrics")({
-  component: MetricsPage,
-  head: () => ({ meta: [{ title: "Metrics · Docker Manager" }] }),
-});
+
 
 type Range = "1h" | "24h" | "7d" | "live";
 const RANGES: { id: Range; label: string; hours: number }[] = [
@@ -28,7 +24,7 @@ const RANGES: { id: Range; label: string; hours: number }[] = [
   { id: "live", label: "Live", hours: 0 },
 ];
 
-function MetricsPage() {
+export default function MetricsPage() {
   const [range, setRange] = useState<Range>("24h");
   const [containers, setContainers] = useState<any[]>([]);
   const [dockerStatus, setDockerStatus] = useState<any>(null);
