@@ -37,3 +37,21 @@ export const SYNC_EVENTS = {
   WORKSPACE_CHANGED: "workspace:changed",
   FILE_CHANGED: "file:changed",
 } as const;
+
+export const REFRESH_INTERVAL_KEY = "dockermanager.settings.refreshInterval";
+
+export function getRefreshIntervalMs(): number {
+  try {
+    const raw = localStorage.getItem(REFRESH_INTERVAL_KEY);
+    const value = raw ? parseInt(raw, 10) : 5000;
+    return Number.isFinite(value) && value >= 1000 ? value : 5000;
+  } catch {
+    return 5000;
+  }
+}
+
+export function setRefreshIntervalMs(ms: number) {
+  try {
+    localStorage.setItem(REFRESH_INTERVAL_KEY, String(ms));
+  } catch {}
+}

@@ -26,7 +26,6 @@ import ImagesPage from "./routes/images";
 import VolumesPage from "./routes/volumes";
 import RegistryPage from "./routes/registry";
 import YamlPage from "./routes/yaml";
-import EnvPage from "./routes/env";
 import AIPage from "./routes/ai";
 import SetupPage from "./routes/setup";
 import SettingsPage from "./routes/settings";
@@ -206,7 +205,6 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/volumes" element={<VolumesPage />} />
                   <Route path="/registry" element={<RegistryPage />} />
                   <Route path="/yaml" element={<YamlPage />} />
-                  <Route path="/env" element={<EnvPage />} />
                   <Route path="/ai" element={<AIPage />} />
                   <Route path="/setup" element={<SetupPage />} />
                   <Route path="/settings" element={<SettingsPage />} />

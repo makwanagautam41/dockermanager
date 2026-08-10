@@ -100,7 +100,20 @@ export interface ActivityEvent {
   id: string;
   ts: string;
   message: string;
-  kind: "start" | "stop" | "create" | "delete" | "edit" | "error" | "alert";
+  kind:
+    | "start"
+    | "stop"
+    | "restart"
+    | "create"
+    | "delete"
+    | "edit"
+    | "error"
+    | "alert"
+    | "pull"
+    | "backup"
+    | "restore"
+    | "success"
+    | "info";
 }
 
 export interface ChatMessage {
@@ -220,11 +233,21 @@ export interface DashboardData {
 export interface DockerStatus {
   running: boolean;
   version: string | null;
+  apiVersion?: string | null;
+  kernel?: string | null;
   containers: number;
   runningContainers: number;
+  pausedContainers?: number;
+  stoppedContainers?: number;
   images: number;
   os: string | null;
   architecture: string | null;
+  cpus?: number;
+  totalMemory?: number;
+  storageDriver?: string | null;
+  dockerRootDir?: string | null;
+  hostname?: string | null;
+  ostype?: string | null;
 }
 
 export interface OllamaStatus {

@@ -14,7 +14,6 @@ import {
   Bot,
   Database,
   Download,
-  FileText,
   FolderTree,
   Gauge,
   Image as ImageIcon,
@@ -76,9 +75,6 @@ export function CommandPalette({
           </CommandItem>
           <CommandItem onSelect={() => go(() => navigate("/yaml"))}>
             <FolderTree className="mr-2 h-4 w-4" /> YAML Explorer
-          </CommandItem>
-          <CommandItem onSelect={() => go(() => navigate("/env"))}>
-            <FileText className="mr-2 h-4 w-4" /> Env files
           </CommandItem>
           <CommandItem onSelect={() => go(() => navigate("/images"))}>
             <ImageIcon className="mr-2 h-4 w-4" /> Images

@@ -87,6 +87,7 @@ interface WorkspaceStore {
   clearStackChat: (stackId: string) => void;
 
   pushActivity: (workspaceId: string, ev: Omit<ActivityEvent, "id" | "ts">) => void;
+  clearActivity: (workspaceId: string) => void;
 
   addSnippet: (workspaceId: string, s: Snippet) => void;
   deleteSnippet: (workspaceId: string, id: string) => void;
@@ -173,10 +174,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!currentId) return;
     const dash = await api.getDashboard().catch(() => null);
     if (!dash) return;
-    setActivityByWs((prev) => ({
-      ...prev,
-      [currentId]: dash.recentActivity as ActivityEvent[],
-    }));
+    setActivityByWs((prev) => {
+      const local = prev[currentId] ?? [];
+      const remote = (dash.recentActivity as ActivityEvent[]) ?? [];
+      const byId = new Map<string, ActivityEvent>();
+      for (const e of remote) byId.set(e.id, e);
+      for (const e of local) if (!byId.has(e.id)) byId.set(e.id, e);
+      const merged = [...byId.values()].sort(
+        (a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime(),
+      );
+      return { ...prev, [currentId]: merged.slice(0, 100) };
+    });
   }, [currentId]);
 
   useEffect(() => {
@@ -282,6 +290,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ...prev,
       [workspaceId]: [full, ...(prev[workspaceId] ?? [])].slice(0, 100),
     }));
+  }, []);
+
+  const clearActivity = useCallback((workspaceId: string) => {
+    setActivityByWs((prev) => ({ ...prev, [workspaceId]: [] }));
   }, []);
 
   const addWorkspace = useCallback(
@@ -744,7 +756,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     clearChat,
     appendStackChat,
     clearStackChat,
-    pushActivity,
+pushActivity,
+    clearActivity,
     addSnippet,
     deleteSnippet,
     addAlert,

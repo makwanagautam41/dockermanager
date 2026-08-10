@@ -19,7 +19,9 @@ export class BackupService {
   }
 
   private getRootFolderPath(): string {
-    return path.join(process.cwd(), 'yaml-data');
+    return path.resolve(
+      process.env.DEFAULT_WORKSPACE_ROOT?.trim() || 'docker-yaml-files',
+    );
   }
 
   async backupWorkspaceFiles() {

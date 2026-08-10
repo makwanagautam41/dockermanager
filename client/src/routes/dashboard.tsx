@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Bot, FolderTree, Layers, Plus, TrendingUp } from "lucide-react";
+import { Bot, FolderTree, Layers, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
@@ -18,6 +18,8 @@ import {
   YAxis,
 } from "recharts";
 import { StatusBadge } from "@/components/status-badge";
+import { severityStylesFor } from "@/components/activity-drawer";
+import { cn } from "@/lib/utils";
 
 
 
@@ -117,7 +119,7 @@ export default function DashboardPage() {
           </Button>
           <Button asChild>
             <Link to="/containers">
-              <Plus className="mr-2 h-4 w-4" /> Create container
+              <Layers className="mr-2 h-4 w-4" /> Manage containers
             </Link>
           </Button>
         </div>
@@ -193,17 +195,20 @@ export default function DashboardPage() {
                 No activity yet
               </div>
             )}
-            {activity.map((a) => (
-              <div key={a.id} className="flex items-start gap-2">
-                <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
-                <div className="flex-1">
-                  <div className="truncate">{a.message}</div>
-                  <div className="font-mono text-[10px] text-muted-foreground">
-                    {new Date(a.ts).toLocaleTimeString()} · {a.kind}
+            {activity.map((a) => {
+              const { dot, text } = severityStylesFor(a.kind);
+              return (
+                <div key={a.id} className="flex items-start gap-2">
+                  <div className={cn("mt-1.5 h-1.5 w-1.5 rounded-full", dot)} />
+                  <div className="flex-1">
+                    <div className={cn("truncate", text)}>{a.message}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground">
+                      {new Date(a.ts).toLocaleTimeString()} · {a.kind}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>

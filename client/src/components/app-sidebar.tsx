@@ -8,7 +8,6 @@ import {
   IconSettings,
   IconGauge,
   IconBell,
-  IconFileText,
   IconCloudDownload,
   IconPhoto,
   IconDeviceDesktopAnalytics,
@@ -46,10 +45,7 @@ const GROUPS = [
   },
   {
     label: "Files",
-    items: [
-      { title: "Explorer", to: "/yaml", icon: IconFileCode },
-      { title: "Env files", to: "/env", icon: IconFileText },
-    ],
+    items: [{ title: "Explorer", to: "/yaml", icon: IconFileCode }],
   },
   {
     label: "Tools",

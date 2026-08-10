@@ -43,6 +43,7 @@ import { Label } from "@/components/ui/label";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useWorkspaces } from "@/lib/workspace-store";
 
 
 
@@ -191,6 +192,8 @@ const POPULAR_SECTIONS = [
 
 /* ── component ── */
 export default function RegistryPage() {
+  const { current, pushActivity } = useWorkspaces();
+  const wsId = current?.id;
   const [q, setQ] = useState("");
   const [searchResults, setSearchResults] = useState<RegistryImage[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -200,10 +203,30 @@ export default function RegistryPage() {
   const DEBOUNCE_MS = 400;
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined as any);
 
+  /* locally installed images (for "installed" badges) */
+  const [installedImages, setInstalledImages] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    api
+      .listImages()
+      .then((images) => {
+        const set = new Set<string>();
+        for (const img of images as any[]) {
+          for (const tag of img.tags ?? []) {
+            set.add(String(tag).split(":")[0]);
+          }
+        }
+        setInstalledImages(set);
+      })
+      .catch(() => {});
+  }, []);
+
   /* details sheet */
   const [detailImage, setDetailImage] = useState<RegistryImage | null>(null);
   const [detailTags, setDetailTags] = useState<TagInfo[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [tagPage, setTagPage] = useState(1);
+  const [tagTotal, setTagTotal] = useState(0);
+  const [tagsLoadingMore, setTagsLoadingMore] = useState(false);
 
   /* pull tasks (persistent across dialog opens) */
   const [pullTasks, setPullTasks] = useState<Record<string, PullTask>>({});
@@ -227,6 +250,10 @@ export default function RegistryPage() {
   const [runPort, setRunPort] = useState("");
   const [runName, setRunName] = useState("");
   const [runCreating, setRunCreating] = useState(false);
+
+  /* custom pull dialog */
+  const [customPullOpen, setCustomPullOpen] = useState(false);
+  const [customPullValue, setCustomPullValue] = useState("");
 
   /* favorites */
   const [favorites, setFavoritesState] = useState<string[]>(getFavorites);
@@ -291,19 +318,60 @@ export default function RegistryPage() {
     setDetailImage(img);
     setDetailLoading(true);
     setDetailTags([]);
+    setTagPage(1);
+    setTagTotal(0);
     addToRecentlyViewed(img);
     try {
-      const [namespace, repo] = img.name.indexOf("/") >= 0
-        ? img.name.split("/")
-        : ["library", img.name];
+      const [namespace, repo] =
+        img.name.indexOf("/") >= 0 ? img.name.split("/") : ["library", img.name];
       const tags = await api.registryTags(namespace, repo, 1, 100);
       setDetailTags(tags.results || []);
+      setTagTotal(tags.total || 0);
     } catch (e: any) {
       toast.error(`Failed to load tags: ${e.message}`);
     } finally {
       setDetailLoading(false);
     }
   };
+
+  const loadMoreTags = async () => {
+    if (!detailImage) return;
+    const [namespace, repo] =
+      detailImage.name.indexOf("/") >= 0
+        ? detailImage.name.split("/")
+        : ["library", detailImage.name];
+    setTagsLoadingMore(true);
+    try {
+      const res = await api.registryTags(namespace, repo, tagPage + 1, 100);
+      setDetailTags((prev) => {
+        const seen = new Set(prev.map((t) => t.name));
+        const fresh = (res.results ?? []).filter((t: TagInfo) => !seen.has(t.name));
+        return [...prev, ...fresh];
+      });
+      setTagTotal(res.total || 0);
+      setTagPage((p) => p + 1);
+    } catch (e: any) {
+      toast.error(`Failed to load more tags: ${e.message}`);
+    } finally {
+      setTagsLoadingMore(false);
+    }
+  };
+
+  const copyCommand = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`Copied ${label} to clipboard`);
+    } catch {
+      toast.error("Clipboard not available");
+    }
+  };
+
+  const pullCommandFor = (img: { name: string }, tag: string) => {
+    return `docker pull ${img.name}:${tag}`;
+  };
+
+  const isInstalled = (img: { name: string }) =>
+    installedImages.has(img.name) || installedImages.has(img.name.split("/").pop() ?? "");
 
   /* pull with SSE stream */
   const startPull = (name: string, tag: string) => {
@@ -371,6 +439,7 @@ export default function RegistryPage() {
       delete eventSourceRef.current[key];
       setPullTasks((prev) => ({ ...prev, [key]: { ...prev[key], status: "done" } }));
       toast.success(`Pulled ${key}`);
+      if (wsId) pushActivity(wsId, { kind: "pull", message: `image pulled: ${key}` });
     });
 
     es.addEventListener("error", (e) => {
@@ -383,6 +452,7 @@ export default function RegistryPage() {
       } catch {}
       setPullTasks((prev) => ({ ...prev, [key]: { ...prev[key], status: "error", error: msg } }));
       toast.error(msg);
+      if (wsId) pushActivity(wsId, { kind: "error", message: `pull failed ${key}: ${msg}` });
     });
 
     es.onerror = () => {
@@ -454,6 +524,7 @@ export default function RegistryPage() {
         port,
       });
       toast.success(`Container "${res.name}" started from ${imageName}`);
+      if (wsId) pushActivity(wsId, { kind: "create", message: `container started from registry: ${res.name}` });
       setRunImage(null);
       setRunName("");
       setRunPort("");
@@ -471,10 +542,20 @@ export default function RegistryPage() {
       {/* header */}
       <div className="flex items-center gap-3">
         <IconBrandDocker className="h-6 w-6 text-primary" stroke={1.75} />
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">Registry</h1>
           <p className="text-sm text-muted-foreground">Docker Hub image explorer</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setCustomPullValue("");
+            setCustomPullOpen(true);
+          }}
+        >
+          <IconDownload className="mr-2 h-4 w-4" stroke={1.75} /> Pull image
+        </Button>
       </div>
 
       {/* active pull tasks indicator */}
@@ -581,10 +662,12 @@ export default function RegistryPage() {
                 <SearchCard
                   key={img.name}
                   img={img}
+                  installed={isInstalled(img)}
                   isFav={isFav(img.name)}
                   onToggleFav={() => toggleFav(img.name)}
                   onClick={() => openDetails(img)}
                   onPull={(tag) => startPull(img.name, tag)}
+                  onCopyPull={(tag) => copyCommand(pullCommandFor(img, tag), "pull command")}
                   onDetails={() => openDetails(img)}
                 />
               ))}
@@ -621,10 +704,12 @@ export default function RegistryPage() {
                   <SearchCard
                     key={img.name}
                     img={img}
+                    installed={isInstalled(img)}
                     isFav={isFav(img.name)}
                     onToggleFav={() => toggleFav(img.name)}
                     onClick={() => openDetails(img)}
                     onPull={(tag) => startPull(img.name, tag)}
+                    onCopyPull={(tag) => copyCommand(pullCommandFor(img, tag), "pull command")}
                     onDetails={() => openDetails(img)}
                   />
                 ))}
@@ -676,10 +761,12 @@ export default function RegistryPage() {
                     <SearchCard
                       key={fullName}
                       img={mappedImg}
+                      installed={isInstalled(mappedImg)}
                       isFav={isFav(fullName)}
                       onToggleFav={() => toggleFav(fullName)}
                       onClick={() => openDetails(mappedImg)}
                       onPull={(tag) => startPull(fullName, tag)}
+                      onCopyPull={(tag) => copyCommand(pullCommandFor(mappedImg, tag), "pull command")}
                       onDetails={() => openDetails(mappedImg)}
                     />
                   );
@@ -694,7 +781,14 @@ export default function RegistryPage() {
       <Sheet open={!!detailImage} onOpenChange={(o) => { if (!o) setDetailImage(null); }}>
         <SheetContent side="right" className="w-full sm:max-w-md md:max-w-lg p-0">
           <SheetHeader className="px-6 pt-6 pb-2">
-            <SheetTitle className="font-mono text-base">{detailImage?.name}</SheetTitle>
+            <div className="flex items-center gap-2 pr-2">
+              <SheetTitle className="font-mono text-base">{detailImage?.name}</SheetTitle>
+              {detailImage && isInstalled(detailImage) && (
+                <Badge variant="secondary" className="gap-1 text-[10px] px-1.5 py-0 h-5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                  <IconCheck className="h-3 w-3" stroke={2} /> Installed
+                </Badge>
+              )}
+            </div>
             <SheetDescription className="text-xs line-clamp-2">{detailImage?.description}</SheetDescription>
           </SheetHeader>
 
@@ -720,6 +814,14 @@ export default function RegistryPage() {
                 </Button>
                 <Button size="sm" variant="secondary" className="flex-1" onClick={() => setRunImage({ name: detailImage.name, tag: "latest" })}>
                   <IconPlayerPlay className="mr-2 h-4 w-4" stroke={1.75} /> Run
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyCommand(`docker pull ${detailImage.name}:latest`, "pull command")}
+                  title="Copy pull command"
+                >
+                  <IconHistory className="h-4 w-4" stroke={1.75} />
                 </Button>
               </div>
             )}
@@ -749,6 +851,14 @@ export default function RegistryPage() {
                         </span>
                       </div>
                       <div className="flex gap-1 shrink-0 ml-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => copyCommand(`docker pull ${detailImage!.name}:${tag.name}`, "tag pull command")}
+                          title="Copy pull command"
+                        >
+                          <IconHistory className="h-4 w-4" stroke={1.75} />
+                        </Button>
                         <Button size="sm" variant="ghost" onClick={() => startPull(detailImage!.name, tag.name)}>
                           <IconDownload className="h-4 w-4" stroke={1.75} />
                         </Button>
@@ -759,6 +869,22 @@ export default function RegistryPage() {
                     </div>
                   ))}
                 </div>
+              )}
+              {!detailLoading && detailTags.length > 0 && tagTotal > tagPage * 100 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 w-full"
+                  disabled={tagsLoadingMore}
+                  onClick={loadMoreTags}
+                >
+                  {tagsLoadingMore ? (
+                    <IconLoader2 className="mr-2 h-4 w-4 animate-spin" stroke={1.75} />
+                  ) : (
+                    <IconHistory className="mr-2 h-4 w-4" stroke={1.75} />
+                  )}
+                  Load more tags ({tagTotal - tagPage * 100} remaining)
+                </Button>
               )}
             </div>
           </div>
@@ -955,6 +1081,54 @@ export default function RegistryPage() {
         </DialogContent>
       </Dialog>
 
+      {/* custom pull dialog */}
+      <Dialog open={customPullOpen} onOpenChange={setCustomPullOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pull image</DialogTitle>
+            <DialogDescription>
+              Pull any image from Docker Hub (or a private registry) by name, e.g.{" "}
+              <span className="font-mono">nginx:alpine</span> or{" "}
+              <span className="font-mono">gitea/gitea:latest</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Input
+              value={customPullValue}
+              onChange={(e) => setCustomPullValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customPullValue.trim()) {
+                  const v = customPullValue.trim();
+                  const [name, tag] = v.split(":");
+                  setCustomPullOpen(false);
+                  startPull(name, tag || "latest");
+                }
+              }}
+              placeholder="nginx:alpine"
+              className="font-mono"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">Press Enter to start pulling</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomPullOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!customPullValue.trim()}
+              onClick={() => {
+                const v = customPullValue.trim();
+                const [name, tag] = v.split(":");
+                setCustomPullOpen(false);
+                startPull(name, tag || "latest");
+              }}
+            >
+              <IconDownload className="mr-2 h-4 w-4" stroke={1.75} /> Pull
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* save dialog */}
       <Dialog open={!!saveImage} onOpenChange={(o) => { if (!o) setSaveImage(null); }}>
         <DialogContent>
@@ -982,17 +1156,21 @@ export default function RegistryPage() {
 
 function SearchCard({
   img,
+  installed,
   isFav,
   onToggleFav,
   onClick,
   onPull,
+  onCopyPull,
   onDetails,
 }: {
   img: RegistryImage;
+  installed: boolean;
   isFav: boolean;
   onToggleFav: () => void;
   onClick: () => void;
   onPull: (tag: string) => void;
+  onCopyPull: (tag: string) => void;
   onDetails: () => void;
 }) {
   return (
@@ -1002,6 +1180,11 @@ function SearchCard({
           <div className="flex items-center gap-2">
             <h3 className="font-mono text-sm font-semibold truncate">{img.name}</h3>
             {img.isOfficial && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-5">OFFICIAL</Badge>}
+            {installed && (
+              <Badge variant="secondary" className="gap-1 text-[10px] px-1.5 py-0 h-5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                <IconCheck className="h-3 w-3" stroke={2} /> Installed
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{img.description}</p>
         </div>
@@ -1027,6 +1210,9 @@ function SearchCard({
       <div className="mt-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
         <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => onPull("latest")}>
           <IconDownload className="mr-1 h-3 w-3" stroke={1.75} /> Pull
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onCopyPull("latest")}>
+          <IconHistory className="mr-1 h-3 w-3" stroke={1.75} /> Copy cmd
         </Button>
         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={onDetails}>
           <IconInfoCircle className="mr-1 h-3 w-3" stroke={1.75} /> Details

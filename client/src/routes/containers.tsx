@@ -35,10 +35,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { StatusBadge } from "@/components/status-badge";
 import { LogsViewer } from "@/components/logs-viewer";
 import { api } from "@/lib/api";
-import { emitSync, onSync, SYNC_EVENTS } from "@/lib/utils";
+import { emitSync, onSync, SYNC_EVENTS, getRefreshIntervalMs } from "@/lib/utils";
 import { useWorkspaces } from "@/lib/workspace-store";
 import * as yaml from "js-yaml";
 
@@ -55,7 +54,8 @@ interface DockerContainer {
 }
 
 export default function ContainersPage() {
-  const { current } = useWorkspaces();
+  const { current, pushActivity } = useWorkspaces();
+  const wsId = current?.id;
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,7 +64,6 @@ export default function ContainersPage() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [removeFor, setRemoveFor] = useState<DockerContainer | null>(null);
   const [logsForContainer, setLogsForContainer] = useState<DockerContainer | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
   const [spinOpen, setSpinOpen] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -84,7 +83,8 @@ export default function ContainersPage() {
 
   useEffect(() => {
     fetchContainers();
-    intervalRef.current = setInterval(() => fetchContainers(true), 5000);
+    const ms = getRefreshIntervalMs();
+    intervalRef.current = setInterval(() => fetchContainers(true), ms);
     const unsub = onSync(SYNC_EVENTS.CONTAINERS_CHANGED, () => fetchContainers(true));
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -114,13 +114,15 @@ export default function ContainersPage() {
       if (action === "start") await api.startContainer(c.id);
       else if (action === "stop") await api.stopContainer(c.id);
       else await api.restartContainer(c.id);
-      toast.success(
-        `${c.name} ${action === "start" ? "started" : action === "stop" ? "stopped" : "restarted"}`,
-      );
+      const verb =
+        action === "start" ? "started" : action === "stop" ? "stopped" : "restarted";
+      toast.success(`${c.name} ${verb}`);
+      if (wsId) pushActivity(wsId, { kind: action, message: `container ${action}: ${c.name}` });
       await fetchContainers(true);
       emitSync(SYNC_EVENTS.CONTAINERS_CHANGED, { action, containerId: c.id });
     } catch (e: any) {
       toast.error(e.message);
+      if (wsId) pushActivity(wsId, { kind: "error", message: `failed to ${action} ${c.name}: ${e.message}` });
     } finally {
       setBusy((b) => ({ ...b, [c.id]: false }));
     }
@@ -133,10 +135,12 @@ export default function ContainersPage() {
       if (c.status === "running") await api.stopContainer(c.id);
       await api.removeContainer(c.id);
       toast.success(`${c.name} removed`);
+      if (wsId) pushActivity(wsId, { kind: "delete", message: `container removed: ${c.name}` });
       await fetchContainers(true);
       emitSync(SYNC_EVENTS.CONTAINERS_CHANGED, { action: "remove", containerId: c.id });
     } catch (e: any) {
       toast.error(e.message);
+      if (wsId) pushActivity(wsId, { kind: "error", message: `failed to remove ${c.name}: ${e.message}` });
     } finally {
       setBusy((b) => ({ ...b, [c.id]: false }));
       setRemoveFor(null);
@@ -158,22 +162,21 @@ export default function ContainersPage() {
             <span className="text-muted-foreground">{stoppedCount} stopped</span>
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchContainers(true)}
-          disabled={refreshing}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-        <Button size="sm" onClick={() => setSpinOpen(true)}>
-          <Rocket className="mr-2 h-4 w-4" />
-          Create from YAML
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-          Create container
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchContainers(true)}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => setSpinOpen(true)}>
+            <Rocket className="mr-2 h-4 w-4" />
+            Create from YAML
+          </Button>
+        </div>
       </div>
 
       <Card className="p-3">
@@ -353,21 +356,14 @@ export default function ContainersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <CreateContainerDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={async () => {
-          await fetchContainers(true);
-        }}
-      />
-
       <SpinFromYamlDialog
         open={spinOpen}
         onOpenChange={setSpinOpen}
         workspaceRoot={current?.rootFolder ?? "docker-yaml-files"}
-        onSpun={async () => {
+        onSpun={async (name: string) => {
           await fetchContainers(true);
           emitSync(SYNC_EVENTS.CONTAINERS_CHANGED, { action: "spin-from-yaml" });
+          if (wsId) pushActivity(wsId, { kind: "create", message: `stack spun up from YAML: ${name}` });
         }}
       />
     </div>
@@ -385,188 +381,6 @@ function ContainerStatusBadge({ status, state }: { status: string; state: string
       <span className={`h-2 w-2 rounded-full ${dot} ${isRunning ? "animate-pulse" : ""}`} />
       <span className="text-xs font-mono capitalize">{label}</span>
     </div>
-  );
-}
-
-function parseCommand(value: string): string[] | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (Array.isArray(parsed)) return parsed.map((part) => String(part));
-  } catch {}
-  return trimmed
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function parseEnv(value: string): Record<string, string> | undefined {
-  const entries = value
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const idx = line.indexOf("=");
-      if (idx < 1) return null;
-      return [line.slice(0, idx).trim(), line.slice(idx + 1).trim()] as const;
-    })
-    .filter((entry): entry is readonly [string, string] => Boolean(entry));
-  if (entries.length === 0) return undefined;
-  return Object.fromEntries(entries);
-}
-
-function parseVolumes(value: string): string[] | undefined {
-  const entries = value
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => line.includes(":"));
-  return entries.length > 0 ? entries : undefined;
-}
-
-function CreateContainerDialog({
-  open,
-  onOpenChange,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: () => Promise<void>;
-}) {
-  const [image, setImage] = useState("nginx:alpine");
-  const [name, setName] = useState("");
-  const [port, setPort] = useState("8080");
-  const [env, setEnv] = useState("");
-  const [volumes, setVolumes] = useState("");
-  const [command, setCommand] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const reset = () => {
-    setImage("nginx:alpine");
-    setName("");
-    setPort("8080");
-    setEnv("");
-    setVolumes("");
-    setCommand("");
-  };
-
-  const submit = async () => {
-    if (!image.trim()) {
-      toast.error("Image is required");
-      return;
-    }
-    setSaving(true);
-    try {
-      const created = await api.createContainer({
-        image: image.trim(),
-        name: name.trim() || undefined,
-        port: port.trim() ? Number.parseInt(port, 10) : undefined,
-        env: parseEnv(env),
-        volumes: parseVolumes(volumes),
-        cmd: parseCommand(command),
-      });
-      toast.success(`Container ${created.name} created`);
-      await onCreated();
-      onOpenChange(false);
-      reset();
-      emitSync(SYNC_EVENTS.CONTAINERS_CHANGED, { action: "create", containerId: created.id });
-    } catch (e: any) {
-      toast.error(`Failed to create container: ${e.message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Create container</DialogTitle>
-          <DialogDescription>
-            Spin up a container directly from an image without going through the stack screen.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="container-image">Image</Label>
-            <Input
-              id="container-image"
-              value={image}
-              onChange={(e) => setImage(e.target.value)}
-              placeholder="nginx:alpine"
-              className="font-mono"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="container-name">Name</Label>
-            <Input
-              id="container-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my-container"
-              className="font-mono"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="container-port">Port</Label>
-            <Input
-              id="container-port"
-              value={port}
-              onChange={(e) => setPort(e.target.value)}
-              placeholder="8080"
-              className="font-mono"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="container-command">Command</Label>
-            <Input
-              id="container-command"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              placeholder='["nginx", "-g", "daemon off;"]'
-              className="font-mono"
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="container-env">Environment</Label>
-            <Textarea
-              id="container-env"
-              value={env}
-              onChange={(e) => setEnv(e.target.value)}
-              placeholder="KEY=value\nANOTHER=value"
-              className="min-h-24 font-mono"
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="container-volumes">Volumes</Label>
-            <Textarea
-              id="container-volumes"
-              value={volumes}
-              onChange={(e) => setVolumes(e.target.value)}
-              placeholder="./data:/data\nlogs:/var/log/app"
-              className="min-h-24 font-mono"
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={saving || !image.trim()} onClick={submit}>
-            {saving ? "Creating…" : "Create container"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -885,7 +699,7 @@ function SpinFromYamlDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceRoot: string;
-  onSpun: () => Promise<void>;
+  onSpun: (name: string) => Promise<void>;
 }) {
   const [yamlContent, setYamlContent] = useState(SPIN_PLACEHOLDER);
   const [stackName, setStackName] = useState("");
@@ -1007,7 +821,7 @@ function SpinFromYamlDialog({
       const yamlPath = `${workspaceRoot}/${folder}/docker-compose.yml`;
       await api.composeUpFromYaml(yamlPath, clean);
       toast.success(`Stack "${folder}" spun up from YAML`);
-      await onSpun();
+      await onSpun(folder);
       onOpenChange(false);
       reset();
     } catch (e: any) {
