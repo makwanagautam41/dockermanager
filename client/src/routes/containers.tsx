@@ -363,7 +363,6 @@ export default function ContainersPage() {
       </Button>
       <Button
         size="sm"
-        asChild
         onClick={() => navigate("/create/yaml")}
       >
         <Rocket className="mr-2 h-4 w-4" />

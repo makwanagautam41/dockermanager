@@ -1,5 +1,5 @@
 import { uuid } from "@/lib/utils";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -113,10 +113,13 @@ export default function StackDetail() {
   return (
     <div className="space-y-5">
       <div>
-        <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2 rounded-md">
-          <Link to="/stacks">
-            <IconArrowLeft className="mr-1.5 h-4 w-4" stroke={1.75} /> All stacks
-          </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/stacks")}
+          className="mb-2 -ml-2 rounded-md"
+        >
+          <IconArrowLeft className="mr-1.5 h-4 w-4" stroke={1.75} /> All stacks
         </Button>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{stack.name}</h1>
