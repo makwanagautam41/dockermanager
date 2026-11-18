@@ -1,0 +1,12 @@
+services:
+  trilium:
+    image: triliumnext/trilium:latest
+    container_name: trilium
+    restart: unless-stopped
+    ports:
+      - 8370:8080
+    volumes:
+      - trilium-data:/home/node/trilium-data
+volumes:
+  trilium-data:
+    name: trilium-data

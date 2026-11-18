@@ -18,17 +18,12 @@ import "./index.css";
 import Index from "./routes/index";
 import OnboardingRoute from "./routes/onboarding";
 import AppLayout from "./routes/app-layout";
-import DashboardPage from "./routes/dashboard";
-import MetricsPage from "./routes/metrics";
-import AlertsPage from "./routes/alerts";
 import ContainersPage from "./routes/containers";
 import ImagesPage from "./routes/images";
 import VolumesPage from "./routes/volumes";
 import RegistryPage from "./routes/registry";
 import YamlPage from "./routes/yaml";
-import AIPage from "./routes/ai";
 import SetupPage from "./routes/setup";
-import SettingsPage from "./routes/settings";
 import StacksRedirect from "./routes/redirect-stacks";
 import StackDetail from "./routes/stack-detail";
 
@@ -197,17 +192,12 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/" element={<Index />} />
                 <Route path="/onboarding" element={<OnboardingRoute />} />
                 <Route element={<AppLayout />}>
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/metrics" element={<MetricsPage />} />
-                  <Route path="/alerts" element={<AlertsPage />} />
                   <Route path="/containers" element={<ContainersPage />} />
                   <Route path="/images" element={<ImagesPage />} />
                   <Route path="/volumes" element={<VolumesPage />} />
                   <Route path="/registry" element={<RegistryPage />} />
                   <Route path="/yaml" element={<YamlPage />} />
-                  <Route path="/ai" element={<AIPage />} />
                   <Route path="/setup" element={<SetupPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/stacks" element={<StacksRedirect />} />
                   <Route path="/stacks/:stackId" element={<StackDetail />} />
                 </Route>

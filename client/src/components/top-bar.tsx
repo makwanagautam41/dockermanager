@@ -4,13 +4,27 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CommandPalette } from "@/components/command-palette";
 import { ActivityDrawer } from "@/components/activity-drawer";
+import { useHealth, FeatureStatus } from "@/lib/health";
 import { useState } from "react";
 
 export function TopBar() {
   const [openPalette, setOpenPalette] = useState(false);
+  const docker = useHealth("dockerEngine");
+  const ollama = useHealth("ollamaReachable");
 
   const fireShortcut = () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }));
+  };
+
+  const statusChip = (label: string, status: FeatureStatus) => {
+    const variant =
+      status === "ok" ? "bg-emerald-500 text-emerald-900" : status === "failed" ? "bg-red-500 text-red-900" : "bg-muted text-muted-foreground";
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold ${variant}`}>
+        <span className="h-1.5 w-1.5 rounded-full" />
+        {label}: {status === "ok" ? "connected" : status === "failed" ? "disconnected" : "optional"}
+      </span>
+    );
   };
 
   return (
@@ -38,6 +52,10 @@ export function TopBar() {
         >
           <IconKeyboard className="h-4 w-4" stroke={1.75} />
         </Button>
+        <div className="flex items-center gap-1.5">
+          {statusChip("Docker", docker.status)}
+          {statusChip("Ollama", ollama.status)}
+        </div>
         <ActivityDrawer />
         <ThemeToggle />
       </header>

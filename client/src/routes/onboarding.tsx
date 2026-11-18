@@ -3,5 +3,5 @@ import { OnboardingWizard } from "@/components/onboarding-wizard";
 
 export default function OnboardingRoute() {
   const navigate = useNavigate();
-  return <OnboardingWizard onDone={() => navigate("/dashboard")} />;
+  return <OnboardingWizard onDone={() => navigate("/containers")} />;
 }

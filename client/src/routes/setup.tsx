@@ -43,9 +43,9 @@ const QUICK_LINKS = [
     Icon: IconFolder,
   },
   {
-    title: "Set up alerts",
-    description: "Get warned when a container restarts too often or CPU spikes.",
-    to: "/alerts",
+    title: "Set up container filters",
+    description: "Categorize and filter your running containers by type, status, and network.",
+    to: "/containers",
     Icon: IconInfoCircle,
   },
 ];

@@ -1,6 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2, Play, Plus, RefreshCw, RotateCw, Rocket, Search, Square, Terminal, Trash2, X } from "lucide-react";
+import {
+  Loader2,
+  Play,
+  Plus,
+  RefreshCw,
+  RotateCw,
+  Rocket,
+  Search,
+  Square,
+  Terminal,
+  Trash2,
+  X,
+  List,
+  Grid,
+  Menu,
+  ChevronDown,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,8 +40,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,44 +50,136 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { LogsViewer } from "@/components/logs-viewer";
 import { api } from "@/lib/api";
 import { emitSync, onSync, SYNC_EVENTS, getRefreshIntervalMs } from "@/lib/utils";
 import { useWorkspaces } from "@/lib/workspace-store";
-import * as yaml from "js-yaml";
+import { useHealth } from "@/lib/health";
+import {
+  categorizeContainer,
+  CATEGORIES,
+  categoryColor,
+  type CategorizedContainer,
+  type RawContainer,
+} from "@/lib/categorizer";
 
+type DockerContainer = RawContainer;
 
+export type { DockerContainer };
 
-interface DockerContainer {
-  id: string;
-  name: string;
-  image: string;
-  status: string;
-  state: string;
-  ports: { host?: number; container?: number; protocol: string }[];
-  created: number;
+const STATUS_OPTIONS: { id: string; label: string }[] = [
+  { id: "running", label: "Running" },
+  { id: "exited", label: "Exited" },
+  { id: "paused", label: "Paused" },
+  { id: "restarting", label: "Restarting" },
+  { id: "created", label: "Created" },
+];
+
+const HEALTH_OPTIONS: { id: string; label: string }[] = [
+  { id: "healthy", label: "Healthy" },
+  { id: "unhealthy", label: "Unhealthy" },
+  { id: "starting", label: "Starting" },
+  { id: "none", label: "None" },
+];
+
+function containerHealth(c: DockerContainer): string {
+  const s = (c.status ?? "").toLowerCase();
+  if (s === "running") return "healthy";
+  if (s === "exited") return "unhealthy";
+  if (s === "restarting") return "starting";
+  if (s === "paused") return "starting";
+  return "none";
+}
+
+interface FilterState {
+  q: string;
+  category: string[];
+  status: string[];
+  health: string[];
+  image: string[];
+  port: string[];
+  created: "all" | "older-than-1month";
+}
+
+const DEFAULT_FILTER: FilterState = {
+  q: "",
+  category: [],
+  status: [],
+  health: [],
+  image: [],
+  port: [],
+  created: "all",
+};
+
+function parseFilters(searchParams: URLSearchParams): FilterState {
+  const getArr = (key: string): string[] =>
+    searchParams.getAll(key).filter(Boolean);
+  return {
+    q: searchParams.get("q") ?? "",
+    category: getArr("category"),
+    status: getArr("status"),
+    health: getArr("health"),
+    image: getArr("image"),
+    port: getArr("port"),
+    created:
+      (searchParams.get("created") as FilterState["created"]) ?? "all",
+  };
+}
+
+function buildSearchParams(f: FilterState): URLSearchParams {
+  const p = new URLSearchParams();
+  if (f.q) p.set("q", f.q);
+  f.category.forEach((v) => p.append("category", v));
+  f.status.forEach((v) => p.append("status", v));
+  f.health.forEach((v) => p.append("health", v));
+  f.image.forEach((v) => p.append("image", v));
+  f.port.forEach((v) => p.append("port", v));
+  if (f.created !== "all") p.set("created", f.created);
+  return p;
 }
 
 export default function ContainersPage() {
   const { current, pushActivity } = useWorkspaces();
   const wsId = current?.id;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<"all" | "running" | "exited" | "created">("all");
-  const [q, setQ] = useState("");
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [removeFor, setRemoveFor] = useState<DockerContainer | null>(null);
   const [logsForContainer, setLogsForContainer] = useState<DockerContainer | null>(null);
-  const [spinOpen, setSpinOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState<{ action: string; ids: string[] } | null>(null);
+  const [view, setView] = useState<"table" | "cards">("table");
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({
+    key: "name",
+    dir: "asc",
+  });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const docker = useHealth("dockerEngine");
+
+  const parsedFilters = useMemo(() => parseFilters(searchParams), [searchParams]);
+  const [filter, setFilter] = useState<FilterState>(parsedFilters);
+
+  // Persist filter state to the URL so it is shareable and survives refresh.
+  useEffect(() => {
+    if (searchParams.toString() === buildSearchParams(filter).toString()) return;
+    setSearchParams(buildSearchParams(filter), { replace: true });
+  }, [filter, searchParams, setSearchParams]);
 
   const fetchContainers = async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const data = await api.listContainers();
-      setContainers(data as any);
+      const data = (await api.listContainers()) as DockerContainer[];
+      setContainers(data);
     } catch (e: any) {
       if (!silent) toast.error(`Failed to load containers: ${e.message}`);
     } finally {
@@ -92,21 +199,68 @@ export default function ContainersPage() {
     };
   }, []);
 
+  const distinctImages = useMemo(() => {
+    const set = new Set<string>();
+    containers.forEach((c) => set.add(c.image));
+    return [...set].sort();
+  }, [containers]);
+
+  // Categorize containers (auto + user overrides stored per workspace could live here).
+  const categorized = useMemo(
+    () => containers.map((c) => categorizeContainer(c)),
+    [containers],
+  );
+
   const filtered = useMemo(() => {
-    return containers.filter((c) => {
-      const state = c.status ?? "";
-      if (filter === "running" && state !== "running") return false;
-      if (filter === "exited" && state !== "exited") return false;
-      if (filter === "created" && state !== "created") return false;
-      if (
-        q &&
-        !c.name.toLowerCase().includes(q.toLowerCase()) &&
-        !c.image.toLowerCase().includes(q.toLowerCase())
-      )
-        return false;
+    const catSet = new Set(filter.category);
+    const statusSet = new Set(filter.status);
+    const healthSet = new Set(filter.health);
+    const imageSet = new Set(filter.image);
+    const portSet = new Set(filter.port);
+    const q = filter.q.toLowerCase();
+    const olderThan = filter.created === "older-than-1month" ? Date.now() - 30 * 24 * 60 * 60 * 1000 : 0;
+
+    return categorized.filter((c) => {
+      // AND across facets.
+      if (catSet.size && !catSet.has(c.category)) return false;
+      if (statusSet.size && !statusSet.has(c.status)) return false;
+      if (healthSet.size && !healthSet.has(containerHealth(c))) return false;
+      if (imageSet.size && !imageSet.has(c.image)) return false;
+      if (portSet.size) {
+        const has = c.ports.some((p) => p.host != null && portSet.has(String(p.host)));
+        if (!has) return false;
+      }
+      if (olderThan && c.created && c.created * 1000 < olderThan) return false;
+      // OR free-text within name/image/id/port.
+      if (q) {
+        const blob = `${c.name} ${c.image} ${c.id} ${c.ports
+          .map((p) => String(p.host ?? p.container))
+          .join(" ")}`.toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
       return true;
     });
-  }, [containers, filter, q]);
+  }, [categorized, filter]);
+
+  const sorted = useMemo(() => {
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let av: any = a[sort.key as keyof DockerContainer];
+      let bv: any = b[sort.key as keyof DockerContainer];
+      if (sort.key === "created") {
+        av = a.created;
+        bv = b.created;
+      }
+      if (av == null && bv == null) return 0;
+      if (av == null) return dir;
+      if (bv == null) return -dir;
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+  }, [filtered, sort]);
+
+  const runningCount = containers.filter((c) => c.status === "running").length;
 
   const runAction = async (c: DockerContainer, action: "start" | "stop" | "restart") => {
     setBusy((b) => ({ ...b, [c.id]: true }));
@@ -114,8 +268,7 @@ export default function ContainersPage() {
       if (action === "start") await api.startContainer(c.id);
       else if (action === "stop") await api.stopContainer(c.id);
       else await api.restartContainer(c.id);
-      const verb =
-        action === "start" ? "started" : action === "stop" ? "stopped" : "restarted";
+      const verb = action === "start" ? "started" : action === "stop" ? "stopped" : "restarted";
       toast.success(`${c.name} ${verb}`);
       if (wsId) pushActivity(wsId, { kind: action, message: `container ${action}: ${c.name}` });
       await fetchContainers(true);
@@ -131,7 +284,6 @@ export default function ContainersPage() {
   const removeContainer = async (c: DockerContainer) => {
     setBusy((b) => ({ ...b, [c.id]: true }));
     try {
-      // Stop it first if running
       if (c.status === "running") await api.stopContainer(c.id);
       await api.removeContainer(c.id);
       toast.success(`${c.name} removed`);
@@ -147,8 +299,78 @@ export default function ContainersPage() {
     }
   };
 
-  const runningCount = containers.filter((c) => c.status === "running").length;
-  const stoppedCount = containers.filter((c) => c.status !== "running").length;
+  const runBulkAction = async (action: "start" | "stop" | "restart" | "remove") => {
+    const ids = [...selectedIds];
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      const c = containers.find((x) => x.id === id);
+      if (!c) continue;
+      try {
+        if (action === "remove") {
+          if (c.status === "running") await api.stopContainer(c.id);
+          await api.removeContainer(c.id);
+        } else if (action === "start") await api.startContainer(c.id);
+        else if (action === "stop") await api.stopContainer(c.id);
+        else await api.restartContainer(c.id);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    setSelectedIds(new Set());
+    await fetchContainers(true);
+    emitSync(SYNC_EVENTS.CONTAINERS_CHANGED, { action: "bulk" });
+    toast.success(`Bulk ${action}: ${ok} succeeded${fail ? `, ${fail} failed` : ""}`);
+    setBulkOpen(null);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(sorted.map((c) => c.id)) : new Set());
+  };
+
+  const isSelected = (id: string) => selectedIds.has(id);
+
+  const handleSaveFilter = () => {
+    const name = window.prompt("Save this filter as…");
+    if (!name) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem("dm-saved-filters") ?? "[]");
+      saved.push({ name, filter, createdAt: new Date().toISOString() });
+      localStorage.setItem("dm-saved-filters", JSON.stringify(saved));
+      toast.success(`Filter "${name}" saved`);
+    } catch {
+      toast.error("Failed to save filter");
+    }
+  };
+
+  if (!current) return null;
+
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <Button size="sm" variant="outline" onClick={() => fetchContainers(true)} disabled={refreshing}>
+        <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        Refresh
+      </Button>
+      <Button
+        size="sm"
+        asChild
+        onClick={() => navigate("/create/yaml")}
+      >
+        <Rocket className="mr-2 h-4 w-4" />
+        Create from YAML
+      </Button>
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -159,46 +381,169 @@ export default function ContainersPage() {
             All Docker containers on this host.{" "}
             <span className="text-emerald-500 font-medium">{runningCount} running</span>
             {" · "}
-            <span className="text-muted-foreground">{stoppedCount} stopped</span>
+            <span className="text-muted-foreground">{containers.length - runningCount} stopped</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchContainers(true)}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={() => setSpinOpen(true)}>
-            <Rocket className="mr-2 h-4 w-4" />
-            Create from YAML
-          </Button>
-        </div>
+        <div className="flex items-center gap-2">{headerActions}</div>
       </div>
 
-      <Card className="p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <DockerStatusBadge docker={docker} />
+
+      {/* Filter bar */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-96 flex-1">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by name or image…"
-              className="pl-8"
+              value={filter.q}
+              onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
+              placeholder="Search name, image, port, ID…"
+              className="pl-10"
             />
           </div>
-          <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
-            <TabsList>
-              <TabsTrigger value="all">All ({containers.length})</TabsTrigger>
-              <TabsTrigger value="running">Running ({runningCount})</TabsTrigger>
-              <TabsTrigger value="exited">Exited ({stoppedCount})</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex flex-wrap gap-2">
+            <Label className="flex items-center gap-1 cursor-pointer text-[10px] uppercase tracking-widest text-muted-foreground">
+              Category <ChevronDown className="ml-1 h-3 w-3" strokeWidth={1.5} />
+            </Label>
+            <ScrollArea className="h-[150px] w-[200px] border rounded-md p-1 bg-background">
+              <div className="space-y-1 p-1">
+                {CATEGORIES.map((cat) => {
+                  const active = filter.category.includes(cat);
+                  return (
+                    <label key={cat} className="flex items-center gap-2 rounded-md px-2 py-1 text-xs cursor-pointer select-none transition-colors hover:bg-accent/50">
+                      <Checkbox checked={active} onCheckedChange={() => setFilter((f) => ({ ...f, category: toggleItem(f.category, cat) }))} />
+                      <span className="truncate">{cat}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Status</span>
+            <Tabs value={filter.status.join(",")} onValueChange={(v) => setFilter((f) => ({ ...f, status: v ? v.split(",") : [] }))}>
+              <TabsList className="gap-1">
+                <TabsTrigger value="all">All</TabsTrigger>
+                {STATUS_OPTIONS.map((s) => (
+                  <TabsTrigger key={s.id} value={s.id}>
+                    {s.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Health</span>
+            <Tabs value={filter.health.join(",")} onValueChange={(v) => setFilter((f) => ({ ...f, health: v ? v.split(",") : [] }))}>
+              <TabsList className="gap-1">
+                <TabsTrigger value="all">All</TabsTrigger>
+                {HEALTH_OPTIONS.map((h) => (
+                  <TabsTrigger key={h.id} value={h.id}>
+                    {h.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Image</Label>
+            <SelectMultiple
+              options={distinctImages}
+              value={filter.image}
+              onChange={(v) => setFilter((f) => ({ ...f, image: v }))}
+              placeholder="Filter by image…"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Created</Label>
+            <Button
+              size="sm"
+              variant={filter.created === "older-than-1month" ? "default" : "outline"}
+              onClick={() => setFilter((f) => ({ ...f, created: f.created === "older-than-1month" ? "all" : "older-than-1month" }))}
+            >
+              Older than 1 month
+            </Button>
+          </div>
+        </div>
+
+        {/* Active filters as chips */}
+        {activeChipCount(filter) > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="text-xs text-muted-foreground mr-2">Active: </span>
+            {filter.category.map((c) => (
+              <Chip key={`cat-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, category: f.category.filter((x) => x !== c) }))} />
+            ))}
+            {filter.status.map((c) => (
+              <Chip key={`st-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, status: f.status.filter((x) => x !== c) }))} />
+            ))}
+            {filter.health.map((c) => (
+              <Chip key={`hl-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, health: f.health.filter((x) => x !== c) }))} />
+            ))}
+            {filter.image.map((c) => (
+              <Chip key={`im-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, image: f.image.filter((x) => x !== c) }))} />
+            ))}
+            {filter.port.map((c) => (
+              <Chip key={`pt-${c}`} label={`port ${c}`} onRemove={() => setFilter((f) => ({ ...f, port: f.port.filter((x) => x !== c) }))} />
+            ))}
+            {filter.created !== "all" && (
+              <Chip label="older than 1 month" onRemove={() => setFilter((f) => ({ ...f, created: "all" }))} />
+            )}
+            {filter.q && (
+              <Chip label={`search "${filter.q}"`} onRemove={() => setFilter((f) => ({ ...f, q: "" }))} />
+            )}
+            <Button size="sm" variant="outline" onClick={() => setFilter(DEFAULT_FILTER)}>
+              <X className="mr-1.5 h-3 w-3" strokeWidth={1.5} /> Clear all
+            </Button>
+            {filtered.length > 0 && (
+              <Button size="sm" variant="outline" onClick={handleSaveFilter}>
+                <Menu className="mr-1.5 h-3 w-3" strokeWidth={1.5} /> Save filter
+              </Button>
+            )}
+          </div>
+        )}
       </Card>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <Card className="p-3 border-l-2 border-primary">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-foreground">
+              {selectedIds.size} container{selectedIds.size > 1 ? "s" : ""} selected
+            </span>
+            <Button size="sm" onClick={() => setBulkOpen({ action: "start", ids: [...selectedIds] })} disabled={!docker.available}>
+              Start
+            </Button>
+            <Button size="sm" onClick={() => setBulkOpen({ action: "stop", ids: [...selectedIds] })} disabled={!docker.available}>
+              Stop
+            </Button>
+            <Button size="sm" onClick={() => setBulkOpen({ action: "restart", ids: [...selectedIds] })} disabled={!docker.available}>
+              Restart
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => setBulkOpen({ action: "remove", ids: [...selectedIds] })}>
+              Remove
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setSelectedIds(new Set())}>
+              Clear selection
+            </Button>
+            <span className="ml-auto text-xs text-muted-foreground">
+              Docker {docker.available ? "connected" : "unavailable — actions disabled"}
+            </span>
+          </div>
+        </Card>
+      )}
+
+      <BulkConfirm
+        open={!!bulkOpen}
+        action={bulkOpen?.action ?? ""}
+        count={selectedIds.size}
+        onConfirm={() => runBulkAction(bulkOpen!.action as any)}
+        onCancel={() => setBulkOpen(null)}
+        disabled={!docker.available}
+        reason={docker.available ? undefined : "Docker engine is not reachable"}
+      />
 
       <Card>
         {loading ? (
@@ -206,120 +551,45 @@ export default function ContainersPage() {
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm">Loading containers from Docker…</span>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Image</TableHead>
-                  <TableHead>Ports</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium font-mono text-sm">{c.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[180px] truncate">
-                      {c.image}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {c.ports
-                          ?.filter((p) => p.host)
-                          .map((p, i) => (
-                            <Badge key={i} variant="secondary" className="font-mono text-xs">
-                              {p.host}:{p.container}
-                            </Badge>
-                          ))}
-                        {(!c.ports || c.ports.filter((p) => p.host).length === 0) && (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <ContainerStatusBadge status={c.status} state={c.state} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {c.status !== "running" ? (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            disabled={busy[c.id]}
-                            onClick={() => runAction(c, "start")}
-                            title="Start"
-                          >
-                            {busy[c.id] ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                          </Button>
-                        ) : (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            disabled={busy[c.id]}
-                            onClick={() => runAction(c, "stop")}
-                            title="Stop"
-                          >
-                            {busy[c.id] ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Square className="h-4 w-4" />
-                            )}
-                          </Button>
-                        )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={busy[c.id]}
-                          onClick={() => runAction(c, "restart")}
-                          title="Restart"
-                        >
-                          <RotateCw className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setLogsForContainer(c)}
-                          title="Logs"
-                        >
-                          <Terminal className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setRemoveFor(c)}
-                          title="Remove"
-                          disabled={busy[c.id]}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5}>
-                      <div className="py-12 text-center text-sm text-muted-foreground">
-                        {containers.length === 0
-                          ? "No Docker containers found. Create one to start managing it here."
-                          : "No containers match your filters."}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+        ) : sorted.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            No containers match your filters.
           </div>
+        ) : view === "table" ? (
+          <ContainerTable
+            containers={sorted}
+            runAction={runAction}
+            removeContainer={removeContainer}
+            setLogsForContainer={setLogsForContainer}
+            toggleSelect={toggleSelect}
+            selectAll={selectAll}
+            isSelected={isSelected}
+            sort={sort}
+            setSort={setSort}
+            dockerAvailable={docker.available}
+          />
+        ) : (
+          <ContainerCards
+            containers={sorted}
+            runAction={runAction}
+            removeContainer={removeContainer}
+            setLogsForContainer={setLogsForContainer}
+            toggleSelect={toggleSelect}
+            selectAll={selectAll}
+            isSelected={isSelected}
+            dockerAvailable={docker.available}
+          />
         )}
       </Card>
+
+      <div className="flex items-center gap-2 mt-2">
+        <Button size="icon" variant={view === "table" ? "default" : "outline"} onClick={() => setView("table")} title="Table view">
+          <List className="h-4 w-4" />
+        </Button>
+        <Button size="icon" variant={view === "cards" ? "default" : "outline"} onClick={() => setView("cards")} title="Card view">
+          <Grid className="h-4 w-4" />
+        </Button>
+      </div>
 
       {/* Logs sheet */}
       <Sheet open={!!logsForContainer} onOpenChange={(v) => !v && setLogsForContainer(null)}>
@@ -328,9 +598,7 @@ export default function ContainersPage() {
             <SheetTitle>Logs · {logsForContainer?.name}</SheetTitle>
           </SheetHeader>
           <div className="mt-4">
-            {logsForContainer && (
-              <LogsViewer name={logsForContainer.name} containerId={logsForContainer.id} />
-            )}
+            {logsForContainer && <LogsViewer name={logsForContainer.name} containerId={logsForContainer.id} />}
           </div>
         </SheetContent>
       </Sheet>
@@ -355,646 +623,320 @@ export default function ContainersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <SpinFromYamlDialog
-        open={spinOpen}
-        onOpenChange={setSpinOpen}
-        workspaceRoot={current?.rootFolder ?? "docker-yaml-files"}
-        onSpun={async (name: string) => {
-          await fetchContainers(true);
-          emitSync(SYNC_EVENTS.CONTAINERS_CHANGED, { action: "spin-from-yaml" });
-          if (wsId) pushActivity(wsId, { kind: "create", message: `stack spun up from YAML: ${name}` });
-        }}
-      />
     </div>
   );
 }
 
-function ContainerStatusBadge({ status, state }: { status: string; state: string }) {
-  const isRunning = status === "running";
-  const isExited = status === "exited";
-  const dot = isRunning ? "bg-emerald-500" : isExited ? "bg-slate-400" : "bg-amber-500";
-  const label = state || status;
+function toggleItem(arr: string[], value: string): string[] {
+  return arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value];
+}
 
+function activeChipCount(f: FilterState): number {
+  return f.category.length + f.status.length + f.health.length + f.image.length + f.port.length + (f.created !== "all" ? 1 : 0) + (f.q ? 1 : 0);
+}
+
+function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-muted px-2 py-1 text-xs">
+      <span className="truncate mr-1">{label}</span>
+      <Button size="icon" variant="ghost" className="h-5 w-5 p-0 text-[10px]" onClick={onRemove} aria-label={`Remove ${label}`}>
+        <X className="h-3 w-3" strokeWidth={1.75} />
+      </Button>
+    </span>
+  );
+}
+
+function SelectMultiple({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  options: string[];
+  value: string[];
+  onChange: (v: string[]) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative w-48">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setOpen(!open)}
+        className="w-full justify-between text-left text-xs"
+        disabled={!open && value.length === 0}
+      >
+        {value.length ? `${value.length} selected` : placeholder}
+        <ChevronDown className={`ml-1 h-3 w-3 ${open ? "rotate-180" : ""}`} strokeWidth={1.5} />
+      </Button>
+      {open && (
+        <div className="absolute z-20 w-full mt-1 rounded-md border bg-popover p-1 shadow-lg">
+          <ScrollArea className="h-[180px] p-1">
+            <div className="space-y-1">
+              {options.map((o) => {
+                const active = value.includes(o);
+                return (
+                  <label key={o} className="flex items-center gap-2 rounded-md px-2 py-1 text-xs cursor-pointer select-none transition-colors hover:bg-accent/50">
+                    <Checkbox checked={active} onCheckedChange={() => onChange(toggleItem(value, o))} />
+                    <span className="truncate">{o}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DockerStatusBadge({ docker }: { docker: ReturnType<typeof useHealth> }) {
+  const status = docker.status;
+  const label = status === "ok" ? "Docker connected" : status === "failed" ? "Docker unavailable" : "Checking Docker…";
+  const variant = status === "ok" ? "secondary" : status === "failed" ? "destructive" : "outline";
+  return (
+    <Badge variant={variant} className="font-mono text-xs" title={docker.reason() ?? ""}>
+      {label}
+    </Badge>
+  );
+}
+
+function ColumnHeader({
+  key,
+  label,
+  sort,
+  setSort,
+}: {
+  key: string;
+  label: string;
+  sort: { key: string; dir: "asc" | "desc" };
+  setSort: (s: { key: string; dir: "asc" | "desc" }) => void;
+}) {
+  const active = sort.key === key;
+  const dir = active ? sort.dir : "asc";
+  return (
+    <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer select-none" onClick={() => setSort({ key, dir: active && dir === "asc" ? "desc" : "asc" })}>
+      {label}
+      {active && (dir === "asc" ? <span className="ml-1 text-xs">▲</span> : <span className="ml-1 text-xs">▼</span>)}
+    </TableHead>
+  );
+}
+
+function portBadges(c: DockerContainer) {
+  return c.ports
+    .filter((p) => p.host)
+    .map((p, i) => (
+      <Badge key={i} variant="secondary" className="font-mono text-xs">
+        {p.host}:{p.container}
+      </Badge>
+    ));
+}
+
+function ContainerTable({
+  containers,
+  runAction,
+  removeContainer,
+  setLogsForContainer,
+  toggleSelect,
+  selectAll,
+  isSelected,
+  sort,
+  setSort,
+  dockerAvailable,
+}: {
+  containers: CategorizedContainer[];
+  runAction: (c: DockerContainer, action: "start" | "stop" | "restart") => void;
+  removeContainer: (c: DockerContainer) => void;
+  setLogsForContainer: (c: DockerContainer) => void;
+  toggleSelect: (id: string) => void;
+  selectAll: (checked: boolean) => void;
+  isSelected: (id: string) => boolean;
+  sort: { key: string; dir: "asc" | "desc" };
+  setSort: (s: { key: string; dir: "asc" | "desc" }) => void;
+  dockerAvailable: boolean;
+}) {
+  const allSelected = containers.length > 0 && containers.every((c) => isSelected(c.id));
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHeader className="w-10">
+              <Checkbox checked={allSelected} onCheckedChange={selectAll} />
+            </TableHeader>
+            <ColumnHeader key="name" label="Name" sort={sort} setSort={setSort} />
+            <ColumnHeader key="image" label="Image" sort={sort} setSort={setSort} />
+            <ColumnHeader key="category" label="Category" sort={sort} setSort={setSort} />
+            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</TableHead>
+            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Ports</TableHead>
+            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {containers.map((c) => {
+            const sel = isSelected(c.id);
+            return (
+              <TableRow key={c.id} className={sel ? "bg-accent" : ""}>
+                <TableCell className="w-10">
+                  <Checkbox checked={sel} onCheckedChange={() => toggleSelect(c.id)} />
+                </TableCell>
+                <TableCell className="font-medium font-mono text-sm">{c.name}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground max-w-[160px] truncate">{c.image}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary" className={`${categoryColor(c.category)}`}>
+                    {c.category}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <ContainerStatusBadge status={c.status} state={c.state} />
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">{portBadges(c)}</div>
+                  {(!c.ports || c.ports.filter((p) => p.host).length === 0) && <span className="text-xs text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    {c.status !== "running" ? (
+                      <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "start")} title="Start">
+                        <Play className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "stop")} title="Stop">
+                        <Square className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "restart")} title="Restart">
+                      <RotateCw className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => setLogsForContainer(c)} title="Logs">
+                      <Terminal className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeContainer(c)} title="Remove">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ContainerStatusBadge({ status, state }: { status: string; state?: string }) {
+  const isRunning = status === "running";
+  const dot = isRunning ? "bg-emerald-500" : "bg-slate-400";
   return (
     <div className="flex items-center gap-1.5">
       <span className={`h-2 w-2 rounded-full ${dot} ${isRunning ? "animate-pulse" : ""}`} />
-      <span className="text-xs font-mono capitalize">{label}</span>
+      <span className="text-xs font-mono capitalize">{state || status}</span>
     </div>
   );
 }
 
-const SPIN_PLACEHOLDER = `services:
-  web:
-    image: nginx:alpine
-    container_name: my-nginx
-    ports:
-      - "8080:80"
-    restart: unless-stopped
-`;
-
-interface EnvRow {
-  key: string;
-  value: string;
-}
-
-interface ServiceRow {
-  name: string;
-  image: string;
-  restart: string;
-  ports: string[];
-  volumes: string[];
-  env: EnvRow[];
-}
-
-function portToString(p: any): string {
-  if (typeof p === "string") return p;
-  const obj = (p ?? {}) as Record<string, any>;
-  const target = String(obj.target ?? "");
-  const published = obj.published != null ? String(obj.published) : "";
-  return published ? `${published}:${target}` : target;
-}
-
-function volumeToString(v: any): string {
-  if (typeof v === "string") return v;
-  const obj = (v ?? {}) as Record<string, any>;
-  const source = String(obj.source ?? "");
-  const target = String(obj.target ?? "");
-  const mode = obj.read_only ? ":ro" : "";
-  return `${source}:${target}${mode}`;
-}
-
-function envRowsFromDoc(env: any): EnvRow[] {
-  if (Array.isArray(env)) {
-    return env.map((e: any) => {
-      const s = String(e ?? "");
-      const eq = s.indexOf("=");
-      if (eq === -1) return { key: s, value: "" };
-      return { key: s.slice(0, eq), value: s.slice(eq + 1) };
-    });
-  }
-  if (env && typeof env === "object") {
-    return Object.entries(env).map(([k, v]) => ({ key: k, value: String(v ?? "") }));
-  }
-  return [];
-}
-
-function parseServices(doc: any): { services: ServiceRow[]; error: string | null } {
-  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-    return { services: [], error: "YAML must contain a services section" };
-  }
-  const svcs = doc.services;
-  if (!svcs || typeof svcs !== "object" || Array.isArray(svcs)) {
-    return { services: [], error: "No 'services' section found in YAML" };
-  }
-  const services: ServiceRow[] = Object.entries(svcs).map(([name, raw]) => {
-    const s = (raw ?? {}) as Record<string, any>;
-    return {
-      name,
-      image: typeof s.image === "string" ? s.image : "",
-      restart: typeof s.restart === "string" ? s.restart : "",
-      ports: Array.isArray(s.ports) ? s.ports.map(portToString) : [],
-      volumes: Array.isArray(s.volumes) ? s.volumes.map(volumeToString) : [],
-      env: envRowsFromDoc(s.environment),
-    };
-  });
-  return { services, error: null };
-}
-
-function ServiceCard({
-  row,
-  onRename,
-  onImage,
-  onRestart,
-  onPorts,
-  onVolumes,
-  onEnv,
-  onAddPort,
-  onAddVolume,
-  onAddEnv,
-  onRemove,
+function ContainerCards({
+  containers,
+  runAction,
+  removeContainer,
+  setLogsForContainer,
+  toggleSelect,
+  selectAll,
+  isSelected,
+  dockerAvailable,
 }: {
-  row: ServiceRow;
-  onRename: (oldName: string, newName: string) => void;
-  onImage: (name: string, image: string) => void;
-  onRestart: (name: string, restart: string) => void;
-  onPorts: (name: string, ports: string[]) => void;
-  onVolumes: (name: string, volumes: string[]) => void;
-  onEnv: (name: string, env: EnvRow[]) => void;
-  onAddPort: (name: string) => void;
-  onAddVolume: (name: string) => void;
-  onAddEnv: (name: string) => void;
-  onRemove: (name: string) => void;
+  containers: CategorizedContainer[];
+  runAction: (c: DockerContainer, action: "start" | "stop" | "restart") => void;
+  removeContainer: (c: DockerContainer) => void;
+  setLogsForContainer: (c: DockerContainer) => void;
+  toggleSelect: (id: string) => void;
+  selectAll: (checked: boolean) => void;
+  isSelected: (id: string) => boolean;
+  dockerAvailable: boolean;
 }) {
-  const [nameDraft, setNameDraft] = useState(row.name);
-
-  useEffect(() => {
-    setNameDraft(row.name);
-  }, [row.name]);
-
-  const commitName = () => {
-    const next = nameDraft.trim();
-    if (next && next !== row.name) onRename(row.name, next);
-    else setNameDraft(row.name);
-  };
-
   return (
-    <div className="rounded-md border p-3">
-      <div className="flex items-center gap-2">
-        <Input
-          value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          }}
-          className="h-7 font-mono text-xs font-semibold"
-          placeholder="service-name"
-        />
-        <Input
-          value={row.image}
-          onChange={(e) => onImage(row.name, e.target.value)}
-          className="h-7 flex-1 font-mono text-xs"
-          placeholder="image:tag"
-        />
-        <select
-          value={row.restart}
-          onChange={(e) => onRestart(row.name, e.target.value)}
-          className="h-7 rounded-md border bg-background px-1.5 font-mono text-xs"
-        >
-          <option value="">no restart</option>
-          <option value="no">no</option>
-          <option value="always">always</option>
-          <option value="unless-stopped">unless-stopped</option>
-          <option value="on-failure">on-failure</option>
-        </select>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-          onClick={() => onRemove(row.name)}
-          title="Remove service"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      <div className="mt-3 space-y-2.5">
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Ports
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-muted-foreground"
-              onClick={() => onAddPort(row.name)}
-              title="Add port"
-            >
-              <Plus className="h-3 w-3" />
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {containers.map((c) => (
+        <Card key={c.id} className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <Checkbox checked={isSelected(c.id)} onCheckedChange={() => toggleSelect(c.id)} />
+            <div className="flex gap-1">
+              <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, c.status === "running" ? "stop" : "start")} title={c.status === "running" ? "Stop" : "Start"}>
+                {c.status === "running" ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => setLogsForContainer(c)} title="Logs">
+                <Terminal className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-mono text-sm font-semibold truncate">{c.name}</span>
+            <Badge variant="secondary" className={`${categoryColor(c.category)} text-[10px]`}>{c.category}</Badge>
+          </div>
+          <div className="space-y-1 text-xs text-muted-foreground mb-3">
+            <div className="flex justify-between">
+              <span>Image</span>
+              <span className="font-mono truncate max-w-[120px]">{c.image}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Status</span>
+              <span>{c.state || c.status}</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1 mb-3">{portBadges(c)}</div>
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "restart")} title="Restart">
+              <RotateCw className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeContainer(c)} title="Remove">
+              <Trash2 className="h-4 w-4" />
             </Button>
           </div>
-          <div className="mt-1 space-y-1">
-            {row.ports.map((p, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <Input
-                  value={p}
-                  onChange={(e) => {
-                    const next = [...row.ports];
-                    next[i] = e.target.value;
-                    onPorts(row.name, next);
-                  }}
-                  className="h-6 font-mono text-[11px]"
-                  placeholder="8080:80"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => onPorts(row.name, row.ports.filter((_, j) => j !== i))}
-                  title="Remove port"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-            {row.ports.length === 0 && (
-              <p className="font-mono text-[10px] text-muted-foreground">none</p>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Volumes
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-muted-foreground"
-              onClick={() => onAddVolume(row.name)}
-              title="Add volume"
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-          <div className="mt-1 space-y-1">
-            {row.volumes.map((v, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <Input
-                  value={v}
-                  onChange={(e) => {
-                    const next = [...row.volumes];
-                    next[i] = e.target.value;
-                    onVolumes(row.name, next);
-                  }}
-                  className="h-6 font-mono text-[11px]"
-                  placeholder="data:/var/lib/data"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => onVolumes(row.name, row.volumes.filter((_, j) => j !== i))}
-                  title="Remove volume"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-            {row.volumes.length === 0 && (
-              <p className="font-mono text-[10px] text-muted-foreground">none</p>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Environment
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-muted-foreground"
-              onClick={() => onAddEnv(row.name)}
-              title="Add env var"
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-          <div className="mt-1 space-y-1">
-            {row.env.map((env, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <Input
-                  value={env.key}
-                  onChange={(e) => {
-                    const next = [...row.env];
-                    next[i] = { ...next[i], key: e.target.value };
-                    onEnv(row.name, next);
-                  }}
-                  className="h-6 w-2/5 font-mono text-[11px]"
-                  placeholder="KEY"
-                />
-                <span className="font-mono text-xs text-muted-foreground">=</span>
-                <Input
-                  value={env.value}
-                  onChange={(e) => {
-                    const next = [...row.env];
-                    next[i] = { ...next[i], value: e.target.value };
-                    onEnv(row.name, next);
-                  }}
-                  className="h-6 flex-1 font-mono text-[11px]"
-                  placeholder="value"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => onEnv(row.name, row.env.filter((_, j) => j !== i))}
-                  title="Remove env var"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-            {row.env.length === 0 && (
-              <p className="font-mono text-[10px] text-muted-foreground">none</p>
-            )}
-          </div>
-        </div>
-      </div>
+        </Card>
+      ))}
     </div>
   );
 }
-
-function SpinFromYamlDialog({
+function BulkConfirm({
   open,
-  onOpenChange,
-  workspaceRoot,
-  onSpun,
+  action,
+  count,
+  onConfirm,
+  onCancel,
+  disabled,
+  reason,
 }: {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
-  workspaceRoot: string;
-  onSpun: (name: string) => Promise<void>;
+  action: string;
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  disabled: boolean;
+  reason?: string;
 }) {
-  const [yamlContent, setYamlContent] = useState(SPIN_PLACEHOLDER);
-  const [stackName, setStackName] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const doc = useMemo<any | null>(() => {
-    if (!yamlContent.trim()) return null;
-    try {
-      const parsed: any = yaml.load(yamlContent);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }, [yamlContent]);
-
-  const parsed = useMemo(() => {
-    if (yamlContent.trim()) {
-      try {
-        return parseServices(yaml.load(yamlContent));
-      } catch (e: any) {
-        return { services: [], error: e.message || "Invalid YAML" };
-      }
-    }
-    return { services: [], error: null };
-  }, [yamlContent]);
-
-  const regenerate = (mutator: (doc: any, services: Record<string, any>) => void) => {
-    if (!doc) return;
-    try {
-      const clone: any = JSON.parse(JSON.stringify(doc));
-      const services = (clone.services ?? {}) as Record<string, any>;
-      mutator(clone, services);
-      clone.services = services;
-      setYamlContent(yaml.dump(clone, { indent: 2, lineWidth: -1 }));
-    } catch {
-      // ignore transient edits while typing
-    }
-  };
-
-  const patchService = (name: string, field: "image" | "restart", value: string) => {
-    regenerate((_doc, services) => {
-      const svc = services[name] ?? {};
-      if (value) svc[field] = value;
-      else delete svc[field];
-      services[name] = svc;
-    });
-  };
-
-  const renameService = (oldName: string, newName: string) => {
-    regenerate((_doc, services) => {
-      if (newName === oldName || Object.prototype.hasOwnProperty.call(services, newName)) return;
-      const svc = services[oldName];
-      if (!svc) return;
-      delete services[oldName];
-      services[newName] = svc;
-    });
-  };
-
-  const removeService = (name: string) => {
-    regenerate((_doc, services) => {
-      delete services[name];
-    });
-  };
-
-  const addService = () => {
-    const base = "service";
-    const names = Object.keys((doc?.services ?? {}) as Record<string, any>);
-    let n = names.length + 1;
-    let name = `${base}-${n}`;
-    while (names.includes(name)) name = `${base}-${++n}`;
-    regenerate((_doc, services) => {
-      services[name] = { image: "nginx:alpine" };
-    });
-  };
-
-  const resolvedName = stackName.trim() || parsed.services[0]?.name || "stack";
-
-  const totalPorts = parsed.services.reduce((n, s) => n + s.ports.length, 0);
-  const totalVolumes = parsed.services.reduce((n, s) => n + s.volumes.length, 0);
-  const totalEnv = parsed.services.reduce((n, s) => n + s.env.length, 0);
-
-  const reset = () => {
-    setYamlContent(SPIN_PLACEHOLDER);
-    setStackName("");
-    setSaving(false);
-  };
-
-  const submit = async () => {
-    if (!yamlContent.trim()) {
-      toast.error("Paste a docker-compose YAML first");
-      return;
-    }
-    if (parsed.error) {
-      toast.error(parsed.error);
-      return;
-    }
-    setSaving(true);
-    try {
-      let clean = yamlContent;
-      if (doc) {
-        const clone: any = JSON.parse(JSON.stringify(doc));
-        for (const svc of Object.values(clone.services ?? {})) {
-          const s = svc as Record<string, any>;
-          if (Array.isArray(s.ports))
-            s.ports = s.ports.filter((p: any) => typeof p === "string" && p.trim());
-          if (Array.isArray(s.volumes))
-            s.volumes = s.volumes.filter((v: any) => typeof v === "string" && v.trim());
-          if (Array.isArray(s.environment))
-            s.environment = s.environment.filter(
-              (e: any) => typeof e === "string" && e.includes("=") && e.slice(0, e.indexOf("=")).trim(),
-            );
-          if (!s.image) delete s.image;
-          if (!s.restart) delete s.restart;
-        }
-        clean = yaml.dump(clone, { indent: 2, lineWidth: -1 });
-      }
-      const folder = resolvedName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-      const yamlPath = `${workspaceRoot}/${folder}/docker-compose.yml`;
-      await api.composeUpFromYaml(yamlPath, clean);
-      toast.success(`Stack "${folder}" spun up from YAML`);
-      await onSpun(folder);
-      onOpenChange(false);
-      reset();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  if (!open) return null;
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogContent className="max-w-5xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Rocket className="h-4 w-4" strokeWidth={1.75} /> Spin stack from YAML
-          </DialogTitle>
-          <DialogDescription>
-            Edit the details on the left or the YAML code on the right — both stay in sync — then
-            spin it up with <span className="font-mono">docker compose up -d</span>.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="spin-stack-name">Stack / folder name</Label>
-            <Input
-              id="spin-stack-name"
-              value={stackName}
-              onChange={(e) => setStackName(e.target.value)}
-              placeholder={parsed.services[0]?.name || "my-stack"}
-              className="font-mono"
-            />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            {/* Left: editable details */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
-                  <Badge variant="secondary" className="font-mono">
-                    {parsed.services.length} service{parsed.services.length === 1 ? "" : "s"}
-                  </Badge>
-                  <Badge variant="secondary" className="font-mono">
-                    {totalPorts} port{totalPorts === 1 ? "" : "s"}
-                  </Badge>
-                  <Badge variant="secondary" className="font-mono">
-                    {totalVolumes} volume{totalVolumes === 1 ? "" : "s"}
-                  </Badge>
-                  <Badge variant="secondary" className="font-mono">
-                    {totalEnv} env
-                  </Badge>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 font-mono text-xs"
-                  disabled={!doc}
-                  onClick={addService}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add service
-                </Button>
-              </div>
-
-              {parsed.error ? (
-                <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 font-mono text-xs text-destructive">
-                  {parsed.error}
-                </div>
-              ) : parsed.services.length === 0 ? (
-                <div className="grid h-48 place-items-center rounded-md border border-dashed text-xs text-muted-foreground">
-                  Paste YAML to see service details
-                </div>
-              ) : (
-                <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
-                  {parsed.services.map((s) => (
-                    <ServiceCard
-                      key={s.name}
-                      row={s}
-                      onRename={renameService}
-                      onImage={(name, image) => patchService(name, "image", image)}
-                      onRestart={(name, restart) => patchService(name, "restart", restart)}
-                      onPorts={(name, ports) =>
-                        regenerate((_d, services) => {
-                          const svc = services[name] ?? {};
-                          svc.ports = ports;
-                          services[name] = svc;
-                        })
-                      }
-                      onVolumes={(name, volumes) =>
-                        regenerate((_d, services) => {
-                          const svc = services[name] ?? {};
-                          svc.volumes = volumes;
-                          services[name] = svc;
-                        })
-                      }
-                      onEnv={(name, env) =>
-                        regenerate((_d, services) => {
-                          const svc = services[name] ?? {};
-                          svc.environment = env.map((r) => `${r.key}=${r.value}`);
-                          services[name] = svc;
-                        })
-                      }
-                      onAddPort={(name) =>
-                        regenerate((_d, services) => {
-                          const svc = services[name] ?? {};
-                          svc.ports = [...(Array.isArray(svc.ports) ? svc.ports : []), ""];
-                          services[name] = svc;
-                        })
-                      }
-                      onAddVolume={(name) =>
-                        regenerate((_d, services) => {
-                          const svc = services[name] ?? {};
-                          svc.volumes = [...(Array.isArray(svc.volumes) ? svc.volumes : []), ""];
-                          services[name] = svc;
-                        })
-                      }
-                      onAddEnv={(name) =>
-                        regenerate((_d, services) => {
-                          const svc = services[name] ?? {};
-                          svc.environment = [
-                            ...envRowsFromDoc(svc.environment),
-                            { key: "", value: "" },
-                          ].map((r) => `${r.key}=${r.value}`);
-                          services[name] = svc;
-                        })
-                      }
-                      onRemove={removeService}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Right: YAML code */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between rounded-t-md border bg-muted/40 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                <span>docker-compose.yml</span>
-                <span>{yamlContent.split("\n").length} lines</span>
-              </div>
-              <Textarea
-                value={yamlContent}
-                onChange={(e) => setYamlContent(e.target.value)}
-                spellCheck={false}
-                className="min-h-[400px] flex-1 resize-y rounded-t-none font-mono text-xs leading-5"
-                placeholder="services:&#10;  app:&#10;    image: nginx:alpine&#10;    ports:&#10;      - '8080:80'"
-              />
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={saving || !yamlContent.trim() || !!parsed.error}
-            onClick={submit}
-            className="gap-2"
+    <AlertDialog open={open} onOpenChange={onCancel}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Bulk {action} {count} container{count > 1 ? "s" : ""}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {disabled ? reason : `This will ${action} ${count} selected container${count > 1 ? "s" : ""}.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={disabled}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={onConfirm}
           >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Rocket className="h-4 w-4" strokeWidth={1.75} />
-            )}
-            {saving ? "Spinning up…" : "Spin up stack"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {disabled ? "Unavailable" : `Confirm ${action}`}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

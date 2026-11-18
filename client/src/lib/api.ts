@@ -670,18 +670,6 @@ export const api = {
     return request<DashboardData>("/dashboard");
   },
 
-  // ---- Settings ----
-  async getSettings() {
-    return request<Record<string, any>>("/settings");
-  },
-
-  async updateSettings(value: Record<string, any>) {
-    return request<Record<string, any>>("/settings", {
-      method: "PUT",
-      body: JSON.stringify(value),
-    });
-  },
-
   // ---- Database ----
   async dbListTables() {
     return request<string[]>("/db/tables");

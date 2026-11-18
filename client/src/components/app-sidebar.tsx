@@ -1,15 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   IconBrandDocker,
-  IconDashboard,
   IconDatabase,
   IconFileCode,
-  IconRobot,
-  IconSettings,
-  IconGauge,
-  IconBell,
-  IconCloudDownload,
+  IconLayersLinked,
+  IconPlus,
   IconPhoto,
+  IconCloudDownload,
   IconDeviceDesktopAnalytics,
 } from "@tabler/icons-react";
 import {
@@ -27,17 +24,11 @@ import {
 
 const GROUPS = [
   {
-    label: "Overview",
-    items: [
-      { title: "Dashboard", to: "/dashboard", icon: IconDashboard },
-      { title: "Metrics", to: "/metrics", icon: IconGauge },
-      { title: "Alerts", to: "/alerts", icon: IconBell },
-    ],
-  },
-  {
     label: "Manage",
     items: [
       { title: "Containers", to: "/containers", icon: IconBrandDocker },
+      { title: "Networks", to: "/networks", icon: IconLayersLinked },
+      { title: "Create from YAML", to: "/create/yaml", icon: IconPlus },
       { title: "Images", to: "/images", icon: IconPhoto },
       { title: "Volumes", to: "/volumes", icon: IconDatabase },
       { title: "Registry", to: "/registry", icon: IconCloudDownload },
@@ -49,11 +40,7 @@ const GROUPS = [
   },
   {
     label: "Tools",
-    items: [
-      { title: "AI Assistant", to: "/ai", icon: IconRobot },
-      { title: "Setup", to: "/setup", icon: IconDeviceDesktopAnalytics },
-      { title: "Settings", to: "/settings", icon: IconSettings },
-    ],
+    items: [{ title: "Setup", to: "/setup", icon: IconDeviceDesktopAnalytics }],
   },
 ] as const;
 
@@ -64,7 +51,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b p-3 group-data-[collapsible=icon]:p-2">
         <Link
-          to="/dashboard"
+          to="/containers"
           className="flex items-center gap-2 px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md">
