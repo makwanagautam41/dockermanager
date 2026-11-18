@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ComposeService } from './compose.service';
 
@@ -19,5 +19,30 @@ export class ComposeController {
     },
   ) {
     return this.service.upFromYaml(data);
+  }
+}
+
+@ApiTags('Workspaces')
+@ApiBearerAuth()
+@Controller('workspaces')
+export class WorkspaceController {
+  @Get()
+  list() {
+    return [
+      {
+        id: 'local-host',
+        name: 'Local host',
+        description: 'Global Docker host view',
+        color: '#0f766e',
+        icon: 'Server',
+        rootFolderPath: process.env.DEFAULT_WORKSPACE_ROOT?.trim() || 'docker-yaml-files',
+        createdAt: new Date(0).toISOString(),
+      },
+    ];
+  }
+
+  @Get(':id/stacks')
+  listStacks(@Param('id') id: string) {
+    return [];
   }
 }

@@ -91,41 +91,15 @@ export default function ContainerDetailPage() {
     toast.success("Copied to clipboard");
   };
 
-  if (!containerId) return null;
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <IconLoader2 className="h-6 w-6 animate-spin" />
-      </div>
-    );
-  }
-  if (fetchError) {
-    return (
-      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
-        <p className="text-sm text-muted-foreground">{fetchError}</p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/containers")}>
-            Back to containers
-          </Button>
-          <Button size="sm" onClick={fetchContainer}>
-            <IconRefresh className="mr-2 h-4 w-4" />
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
-  if (!container) return null;
-
-  const name = container.Name?.replace(/^\//, "") || container.id?.slice(0, 12) || "unknown";
-  const image = container.Config?.Image || "unknown";
-  const status = container.State?.Status || "unknown";
-  const state = container.State || {};
-  const networks = (container.NetworkSettings?.Networks as Record<string, any>) || {};
-  const ports = (container.NetworkSettings?.Ports as Record<string, any>) || {};
-  const mounts = (container.Mounts as any[]) || [];
-  const env = (container.Config?.Env as string[]) || [];
-  const created = container.Created || "";
+  const name = container?.Name?.replace(/^\//, "") || container?.id?.slice(0, 12) || "unknown";
+  const image = container?.Config?.Image || "unknown";
+  const status = container?.State?.Status || "unknown";
+  const state = container?.State || {};
+  const networks = (container?.NetworkSettings?.Networks as Record<string, any>) || {};
+  const ports = (container?.NetworkSettings?.Ports as Record<string, any>) || {};
+  const mounts = (container?.Mounts as any[]) || [];
+  const env = (container?.Config?.Env as string[]) || [];
+  const created = container?.Created || "";
   const startedAt = state.StartedAt || "";
   const finishedAt = state.FinishedAt || "";
   const exitCode = state.ExitCode;
@@ -156,12 +130,12 @@ export default function ContainerDetailPage() {
   const networkList = useMemo(() => {
     return Object.entries(networks).map(([netName, netInfo]) => {
       const info = netInfo as any;
-      return ({
+      return {
         name: netName,
         ip: info?.IPAddress || "—",
         mac: info?.MacAddress || "—",
         gateway: info?.Gateway || "—",
-      });
+      };
     });
   }, [networks]);
 
@@ -173,6 +147,32 @@ export default function ContainerDetailPage() {
       rw: m.RW !== false,
     }));
   }, [mounts]);
+
+  if (!containerId) return null;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <IconLoader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+  if (fetchError) {
+    return (
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
+        <p className="text-sm text-muted-foreground">{fetchError}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/containers")}>
+            Back to containers
+          </Button>
+          <Button size="sm" onClick={fetchContainer}>
+            <IconRefresh className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (!container) return null;
 
   return (
     <div className="space-y-5">

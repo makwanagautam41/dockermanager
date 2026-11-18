@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ComposeController } from './compose.controller';
+import { ComposeController, WorkspaceController } from './compose.controller';
 import { ComposeService } from './compose.service';
 
 @Module({
-  controllers: [ComposeController],
+  controllers: [ComposeController, WorkspaceController],
   providers: [ComposeService],
   exports: [ComposeService],
 })
