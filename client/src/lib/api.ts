@@ -638,6 +638,28 @@ export const api = {
     return request<{ alive: boolean }>("/docker/ping");
   },
 
+  async listNetworks() {
+    return request<any[]>("/docker/networks");
+  },
+
+  async getNetwork(id: string) {
+    return request<any>(`/docker/networks/${encodeURIComponent(id)}`);
+  },
+
+  async connectContainerToNetwork(networkId: string, containerId: string) {
+    return request<{ success: boolean }>(`/docker/networks/${encodeURIComponent(networkId)}/connect`, {
+      method: "POST",
+      body: JSON.stringify({ containerId }),
+    });
+  },
+
+  async disconnectContainerFromNetwork(networkId: string, containerId: string) {
+    return request<{ success: boolean }>(`/docker/networks/${encodeURIComponent(networkId)}/disconnect`, {
+      method: "POST",
+      body: JSON.stringify({ containerId }),
+    });
+  },
+
   // ---- Backups ----
   async backupWorkspace(workspaceId: string) {
     return request<{ message: string; path: string; timestamp: string; files: number }>(

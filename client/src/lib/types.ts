@@ -352,3 +352,24 @@ export interface SearchLog {
   results: number;
   createdAt: string;
 }
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+  enable_ipv6: boolean;
+  ipam: any;
+  containers: Record<string, { Name: string; IPv4Address: string; IPv6Address: string; MacAddress: string }>;
+  created: string;
+  labels: Record<string, string>;
+  options: Record<string, string>;
+}
+
+export interface DockerNetworkContainer {
+  Name: string;
+  IPv4Address: string;
+  IPv6Address: string;
+  MacAddress: string;
+}

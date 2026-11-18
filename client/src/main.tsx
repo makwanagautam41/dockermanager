@@ -19,10 +19,13 @@ import Index from "./routes/index";
 import OnboardingRoute from "./routes/onboarding";
 import AppLayout from "./routes/app-layout";
 import ContainersPage from "./routes/containers";
+import ContainerDetailPage from "./routes/container-detail";
 import ImagesPage from "./routes/images";
+import NetworksPage from "./routes/networks";
 import VolumesPage from "./routes/volumes";
 import RegistryPage from "./routes/registry";
 import YamlPage from "./routes/yaml";
+import CreateYamlPage from "./routes/create-yaml";
 import SetupPage from "./routes/setup";
 import StacksRedirect from "./routes/redirect-stacks";
 import StackDetail from "./routes/stack-detail";
@@ -193,6 +196,9 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/onboarding" element={<OnboardingRoute />} />
                 <Route element={<AppLayout />}>
                   <Route path="/containers" element={<ContainersPage />} />
+                  <Route path="/containers/:containerId" element={<ContainerDetailPage />} />
+                  <Route path="/networks" element={<NetworksPage />} />
+                  <Route path="/create/yaml" element={<CreateYamlPage />} />
                   <Route path="/images" element={<ImagesPage />} />
                   <Route path="/volumes" element={<VolumesPage />} />
                   <Route path="/registry" element={<RegistryPage />} />

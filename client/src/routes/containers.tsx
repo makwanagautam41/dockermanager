@@ -2,22 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  Loader2,
-  Play,
-  Plus,
-  RefreshCw,
-  RotateCw,
-  Rocket,
-  Search,
-  Square,
-  Terminal,
-  Trash2,
-  X,
-  List,
-  Grid,
-  Menu,
-  ChevronDown,
-} from "lucide-react";
+  IconLoader2 as Loader2,
+  IconPower as Play,
+  IconPlus as Plus,
+  IconRefresh as RefreshCw,
+  IconRotate as RotateCw,
+  IconRocket as Rocket,
+  IconSearch as Search,
+  IconSquare as Square,
+  IconTerminal as Terminal,
+  IconTrash as Trash2,
+  IconX as X,
+  IconList as List,
+  IconGrid3x3 as Grid,
+  IconChevronDown as ChevronDown,
+  IconHelpCircle as HelpIcon,
+} from "@tabler/icons-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -51,7 +51,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -80,27 +79,10 @@ const STATUS_OPTIONS: { id: string; label: string }[] = [
   { id: "created", label: "Created" },
 ];
 
-const HEALTH_OPTIONS: { id: string; label: string }[] = [
-  { id: "healthy", label: "Healthy" },
-  { id: "unhealthy", label: "Unhealthy" },
-  { id: "starting", label: "Starting" },
-  { id: "none", label: "None" },
-];
-
-function containerHealth(c: DockerContainer): string {
-  const s = (c.status ?? "").toLowerCase();
-  if (s === "running") return "healthy";
-  if (s === "exited") return "unhealthy";
-  if (s === "restarting") return "starting";
-  if (s === "paused") return "starting";
-  return "none";
-}
-
 interface FilterState {
   q: string;
   category: string[];
   status: string[];
-  health: string[];
   image: string[];
   port: string[];
   created: "all" | "older-than-1month";
@@ -110,7 +92,6 @@ const DEFAULT_FILTER: FilterState = {
   q: "",
   category: [],
   status: [],
-  health: [],
   image: [],
   port: [],
   created: "all",
@@ -123,11 +104,9 @@ function parseFilters(searchParams: URLSearchParams): FilterState {
     q: searchParams.get("q") ?? "",
     category: getArr("category"),
     status: getArr("status"),
-    health: getArr("health"),
     image: getArr("image"),
     port: getArr("port"),
-    created:
-      (searchParams.get("created") as FilterState["created"]) ?? "all",
+    created: (searchParams.get("created") as FilterState["created"]) ?? "all",
   };
 }
 
@@ -136,7 +115,6 @@ function buildSearchParams(f: FilterState): URLSearchParams {
   if (f.q) p.set("q", f.q);
   f.category.forEach((v) => p.append("category", v));
   f.status.forEach((v) => p.append("status", v));
-  f.health.forEach((v) => p.append("health", v));
   f.image.forEach((v) => p.append("image", v));
   f.port.forEach((v) => p.append("port", v));
   if (f.created !== "all") p.set("created", f.created);
@@ -161,6 +139,7 @@ export default function ContainersPage() {
     key: "name",
     dir: "asc",
   });
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const docker = useHealth("dockerEngine");
@@ -205,7 +184,6 @@ export default function ContainersPage() {
     return [...set].sort();
   }, [containers]);
 
-  // Categorize containers (auto + user overrides stored per workspace could live here).
   const categorized = useMemo(
     () => containers.map((c) => categorizeContainer(c)),
     [containers],
@@ -214,24 +192,20 @@ export default function ContainersPage() {
   const filtered = useMemo(() => {
     const catSet = new Set(filter.category);
     const statusSet = new Set(filter.status);
-    const healthSet = new Set(filter.health);
     const imageSet = new Set(filter.image);
     const portSet = new Set(filter.port);
     const q = filter.q.toLowerCase();
     const olderThan = filter.created === "older-than-1month" ? Date.now() - 30 * 24 * 60 * 60 * 1000 : 0;
 
     return categorized.filter((c) => {
-      // AND across facets.
       if (catSet.size && !catSet.has(c.category)) return false;
       if (statusSet.size && !statusSet.has(c.status)) return false;
-      if (healthSet.size && !healthSet.has(containerHealth(c))) return false;
       if (imageSet.size && !imageSet.has(c.image)) return false;
       if (portSet.size) {
         const has = c.ports.some((p) => p.host != null && portSet.has(String(p.host)));
         if (!has) return false;
       }
       if (olderThan && c.created && c.created * 1000 < olderThan) return false;
-      // OR free-text within name/image/id/port.
       if (q) {
         const blob = `${c.name} ${c.image} ${c.id} ${c.ports
           .map((p) => String(p.host ?? p.container))
@@ -261,6 +235,10 @@ export default function ContainersPage() {
   }, [filtered, sort]);
 
   const runningCount = containers.filter((c) => c.status === "running").length;
+
+  const handleContainerClick = (c: DockerContainer) => {
+    navigate(`/containers/${c.id}`);
+  };
 
   const runAction = async (c: DockerContainer, action: "start" | "stop" | "restart") => {
     setBusy((b) => ({ ...b, [c.id]: true }));
@@ -355,26 +333,13 @@ export default function ContainersPage() {
 
   if (!current) return null;
 
-  const headerActions = (
-    <div className="flex items-center gap-2">
-      <Button size="sm" variant="outline" onClick={() => fetchContainers(true)} disabled={refreshing}>
-        <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-        Refresh
-      </Button>
-      <Button
-        size="sm"
-        onClick={() => navigate("/create/yaml")}
-      >
-        <Rocket className="mr-2 h-4 w-4" />
-        Create from YAML
-      </Button>
-    </div>
-  );
+  const activeCount = filter.category.length + filter.status.length + filter.image.length + filter.port.length + (filter.created !== "all" ? 1 : 0) + (filter.q ? 1 : 0);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      {/* Header with view toggle at TOP */}
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Containers</h1>
           <p className="text-sm text-muted-foreground">
             All Docker containers on this host.{" "}
@@ -383,127 +348,175 @@ export default function ContainersPage() {
             <span className="text-muted-foreground">{containers.length - runningCount} stopped</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">{headerActions}</div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => fetchContainers(true)} disabled={refreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => navigate("/create/yaml")}>
+            <Rocket className="mr-2 h-4 w-4" />
+            Create from YAML
+          </Button>
+          <Button
+            size="icon"
+            variant={view === "table" ? "default" : "outline"}
+            onClick={() => setView("table")}
+            title="Table view"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant={view === "cards" ? "default" : "outline"}
+            onClick={() => setView("cards")}
+            title="Card view"
+          >
+            <Grid className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setFilterPanelOpen(true)}>
+            <HelpIcon className="mr-1 h-4 w-4" />
+            Filters
+          </Button>
+        </div>
       </div>
 
       <DockerStatusBadge docker={docker} />
 
-      {/* Filter bar */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative w-full sm:w-96 flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={filter.q}
-              onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
-              placeholder="Search name, image, port, ID…"
-              className="pl-10"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Label className="flex items-center gap-1 cursor-pointer text-[10px] uppercase tracking-widest text-muted-foreground">
-              Category <ChevronDown className="ml-1 h-3 w-3" strokeWidth={1.5} />
-            </Label>
-            <ScrollArea className="h-[150px] w-[200px] border rounded-md p-1 bg-background">
-              <div className="space-y-1 p-1">
-                {CATEGORIES.map((cat) => {
-                  const active = filter.category.includes(cat);
-                  return (
-                    <label key={cat} className="flex items-center gap-2 rounded-md px-2 py-1 text-xs cursor-pointer select-none transition-colors hover:bg-accent/50">
-                      <Checkbox checked={active} onCheckedChange={() => setFilter((f) => ({ ...f, category: toggleItem(f.category, cat) }))} />
-                      <span className="truncate">{cat}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </ScrollArea>
-          </div>
-        </div>
+      {/* Filter panel (right-side sheet, opens like notification drawer) */}
+      <Sheet open={filterPanelOpen} onOpenChange={setFilterPanelOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-[420px] p-6">
+          <SheetHeader>
+            <SheetTitle>Filters</SheetTitle>
+            <SheetDescription>
+              Filter containers by category, status, image, and port.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-5">
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2 block">
+                Search
+              </Label>
+              <Input
+                value={filter.q}
+                onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
+                placeholder="Search name, image, port, ID…"
+              />
+            </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Status</span>
-            <Tabs value={filter.status.join(",")} onValueChange={(v) => setFilter((f) => ({ ...f, status: v ? v.split(",") : [] }))}>
-              <TabsList className="gap-1">
-                <TabsTrigger value="all">All</TabsTrigger>
+            <Separator className="my-3" />
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3 block">
+                Category
+              </Label>
+              <ScrollArea className="h-[200px]">
+                <div className="space-y-1.5">
+                  {CATEGORIES.map((cat) => {
+                    const active = filter.category.includes(cat);
+                    return (
+                      <label key={`cat-${cat}`} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer select-none transition-colors hover:bg-accent/50">
+                        <Checkbox checked={active} onCheckedChange={() => setFilter((f) => ({ ...f, category: toggleItem(f.category, cat) }))} />
+                        <span className="truncate">{cat}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+
+            <Separator className="my-3" />
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3 block">
+                Status
+              </Label>
+              <div className="space-y-1.5">
                 {STATUS_OPTIONS.map((s) => (
-                  <TabsTrigger key={s.id} value={s.id}>
-                    {s.label}
-                  </TabsTrigger>
+                  <label key={`status-${s.id}`} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer select-none transition-colors hover:bg-accent/50">
+                    <Checkbox
+                      checked={filter.status.includes(s.id)}
+                      onCheckedChange={() => setFilter((f) => ({ ...f, status: toggleItem(f.status, s.id) }))}
+                    />
+                    <span className="truncate">{s.label}</span>
+                  </label>
                 ))}
-              </TabsList>
-            </Tabs>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Health</span>
-            <Tabs value={filter.health.join(",")} onValueChange={(v) => setFilter((f) => ({ ...f, health: v ? v.split(",") : [] }))}>
-              <TabsList className="gap-1">
-                <TabsTrigger value="all">All</TabsTrigger>
-                {HEALTH_OPTIONS.map((h) => (
-                  <TabsTrigger key={h.id} value={h.id}>
-                    {h.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Image</Label>
-            <SelectMultiple
-              options={distinctImages}
-              value={filter.image}
-              onChange={(v) => setFilter((f) => ({ ...f, image: v }))}
-              placeholder="Filter by image…"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Created</Label>
-            <Button
-              size="sm"
-              variant={filter.created === "older-than-1month" ? "default" : "outline"}
-              onClick={() => setFilter((f) => ({ ...f, created: f.created === "older-than-1month" ? "all" : "older-than-1month" }))}
-            >
-              Older than 1 month
-            </Button>
-          </div>
-        </div>
+              </div>
+            </div>
 
-        {/* Active filters as chips */}
-        {activeChipCount(filter) > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="text-xs text-muted-foreground mr-2">Active: </span>
-            {filter.category.map((c) => (
-              <Chip key={`cat-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, category: f.category.filter((x) => x !== c) }))} />
-            ))}
-            {filter.status.map((c) => (
-              <Chip key={`st-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, status: f.status.filter((x) => x !== c) }))} />
-            ))}
-            {filter.health.map((c) => (
-              <Chip key={`hl-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, health: f.health.filter((x) => x !== c) }))} />
-            ))}
-            {filter.image.map((c) => (
-              <Chip key={`im-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, image: f.image.filter((x) => x !== c) }))} />
-            ))}
-            {filter.port.map((c) => (
-              <Chip key={`pt-${c}`} label={`port ${c}`} onRemove={() => setFilter((f) => ({ ...f, port: f.port.filter((x) => x !== c) }))} />
-            ))}
-            {filter.created !== "all" && (
-              <Chip label="older than 1 month" onRemove={() => setFilter((f) => ({ ...f, created: "all" }))} />
-            )}
-            {filter.q && (
-              <Chip label={`search "${filter.q}"`} onRemove={() => setFilter((f) => ({ ...f, q: "" }))} />
-            )}
-            <Button size="sm" variant="outline" onClick={() => setFilter(DEFAULT_FILTER)}>
-              <X className="mr-1.5 h-3 w-3" strokeWidth={1.5} /> Clear all
-            </Button>
-            {filtered.length > 0 && (
-              <Button size="sm" variant="outline" onClick={handleSaveFilter}>
-                <Menu className="mr-1.5 h-3 w-3" strokeWidth={1.5} /> Save filter
+            <Separator className="my-3" />
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3 block">
+                Image
+              </Label>
+              <div className="space-y-1.5">
+                {distinctImages.map((img) => (
+                  <label key={`img-${img}`} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer select-none transition-colors hover:bg-accent/50">
+                    <Checkbox
+                      checked={filter.image.includes(img)}
+                      onCheckedChange={() => setFilter((f) => ({ ...f, image: toggleItem(f.image, img) }))}
+                    />
+                    <span className="font-mono text-xs truncate">{img}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <Separator className="my-3" />
+            <div className="flex items-center gap-2">
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Older than 1 month
+              </Label>
+              <Button
+                size="sm"
+                variant={filter.created === "older-than-1month" ? "default" : "outline"}
+                onClick={() => setFilter((f) => ({ ...f, created: f.created === "older-than-1month" ? "all" : "older-than-1month" }))}
+              >
+                {filter.created === "older-than-1month" ? "On" : "Off"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between">
+            {activeCount > 0 && (
+              <Button size="sm" variant="outline" onClick={() => setFilter(DEFAULT_FILTER)}>
+                <X className="mr-1.5 h-3 w-3" stroke={1.5} /> Clear all
               </Button>
             )}
+            <Button onClick={() => setFilterPanelOpen(false)}>Done</Button>
           </div>
-        )}
-      </Card>
+        </SheetContent>
+      </Sheet>
+
+      {/* Active filter chips (inline, below header) */}
+      {activeCount > 0 && (
+        <div className="flex flex-wrap gap-2 px-2">
+          <span className="text-xs text-muted-foreground mr-2">Active: </span>
+          {filter.category.map((c) => (
+            <Chip key={`chip-cat-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, category: f.category.filter((x) => x !== c) }))} />
+          ))}
+          {filter.status.map((c) => (
+            <Chip key={`chip-st-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, status: f.status.filter((x) => x !== c) }))} />
+          ))}
+          {filter.image.map((c) => (
+            <Chip key={`chip-im-${c}`} label={c} onRemove={() => setFilter((f) => ({ ...f, image: f.image.filter((x) => x !== c) }))} />
+          ))}
+          {filter.port.map((c) => (
+            <Chip key={`chip-pt-${c}`} label={`port ${c}`} onRemove={() => setFilter((f) => ({ ...f, port: f.port.filter((x) => x !== c) }))} />
+          ))}
+          {filter.created !== "all" && (
+            <Chip label="older than 1 month" onRemove={() => setFilter((f) => ({ ...f, created: "all" }))} />
+          )}
+          {filter.q && (
+            <Chip label={`search "${filter.q}"`} onRemove={() => setFilter((f) => ({ ...f, q: "" }))} />
+          )}
+          <Button size="sm" variant="outline" onClick={() => setFilter(DEFAULT_FILTER)}>
+            <X className="mr-1.5 h-3 w-3" stroke={1.5} /> Clear all
+          </Button>
+          {filtered.length > 0 && (
+            <Button size="sm" variant="outline" onClick={handleSaveFilter}>
+              <HelpMenuIcon className="mr-1.5 h-3 w-3" /> Save filter
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
@@ -566,6 +579,7 @@ export default function ContainersPage() {
             sort={sort}
             setSort={setSort}
             dockerAvailable={docker.available}
+            onContainerClick={handleContainerClick}
           />
         ) : (
           <ContainerCards
@@ -577,18 +591,10 @@ export default function ContainersPage() {
             selectAll={selectAll}
             isSelected={isSelected}
             dockerAvailable={docker.available}
+            onContainerClick={handleContainerClick}
           />
         )}
       </Card>
-
-      <div className="flex items-center gap-2 mt-2">
-        <Button size="icon" variant={view === "table" ? "default" : "outline"} onClick={() => setView("table")} title="Table view">
-          <List className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant={view === "cards" ? "default" : "outline"} onClick={() => setView("cards")} title="Card view">
-          <Grid className="h-4 w-4" />
-        </Button>
-      </div>
 
       {/* Logs sheet */}
       <Sheet open={!!logsForContainer} onOpenChange={(v) => !v && setLogsForContainer(null)}>
@@ -630,63 +636,14 @@ function toggleItem(arr: string[], value: string): string[] {
   return arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value];
 }
 
-function activeChipCount(f: FilterState): number {
-  return f.category.length + f.status.length + f.health.length + f.image.length + f.port.length + (f.created !== "all" ? 1 : 0) + (f.q ? 1 : 0);
-}
-
 function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-muted px-2 py-1 text-xs">
       <span className="truncate mr-1">{label}</span>
       <Button size="icon" variant="ghost" className="h-5 w-5 p-0 text-[10px]" onClick={onRemove} aria-label={`Remove ${label}`}>
-        <X className="h-3 w-3" strokeWidth={1.75} />
+        <X className="h-3 w-3" stroke={1.75} />
       </Button>
     </span>
-  );
-}
-
-function SelectMultiple({
-  options,
-  value,
-  onChange,
-  placeholder,
-}: {
-  options: string[];
-  value: string[];
-  onChange: (v: string[]) => void;
-  placeholder: string;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative w-48">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setOpen(!open)}
-        className="w-full justify-between text-left text-xs"
-        disabled={!open && value.length === 0}
-      >
-        {value.length ? `${value.length} selected` : placeholder}
-        <ChevronDown className={`ml-1 h-3 w-3 ${open ? "rotate-180" : ""}`} strokeWidth={1.5} />
-      </Button>
-      {open && (
-        <div className="absolute z-20 w-full mt-1 rounded-md border bg-popover p-1 shadow-lg">
-          <ScrollArea className="h-[180px] p-1">
-            <div className="space-y-1">
-              {options.map((o) => {
-                const active = value.includes(o);
-                return (
-                  <label key={o} className="flex items-center gap-2 rounded-md px-2 py-1 text-xs cursor-pointer select-none transition-colors hover:bg-accent/50">
-                    <Checkbox checked={active} onCheckedChange={() => onChange(toggleItem(value, o))} />
-                    <span className="truncate">{o}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -722,16 +679,6 @@ function ColumnHeader({
   );
 }
 
-function portBadges(c: DockerContainer) {
-  return c.ports
-    .filter((p) => p.host)
-    .map((p, i) => (
-      <Badge key={i} variant="secondary" className="font-mono text-xs">
-        {p.host}:{p.container}
-      </Badge>
-    ));
-}
-
 function ContainerTable({
   containers,
   runAction,
@@ -743,6 +690,7 @@ function ContainerTable({
   sort,
   setSort,
   dockerAvailable,
+  onContainerClick,
 }: {
   containers: CategorizedContainer[];
   runAction: (c: DockerContainer, action: "start" | "stop" | "restart") => void;
@@ -754,6 +702,7 @@ function ContainerTable({
   sort: { key: string; dir: "asc" | "desc" };
   setSort: (s: { key: string; dir: "asc" | "desc" }) => void;
   dockerAvailable: boolean;
+  onContainerClick: (c: DockerContainer) => void;
 }) {
   const allSelected = containers.length > 0 && containers.every((c) => isSelected(c.id));
   return (
@@ -776,7 +725,7 @@ function ContainerTable({
           {containers.map((c) => {
             const sel = isSelected(c.id);
             return (
-              <TableRow key={c.id} className={sel ? "bg-accent" : ""}>
+              <TableRow key={c.id} className="cursor-pointer hover:bg-accent transition-colors" onClick={() => onContainerClick(c)}>
                 <TableCell className="w-10">
                   <Checkbox checked={sel} onCheckedChange={() => toggleSelect(c.id)} />
                 </TableCell>
@@ -797,21 +746,21 @@ function ContainerTable({
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     {c.status !== "running" ? (
-                      <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "start")} title="Start">
+                      <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={(e) => { e.stopPropagation(); runAction(c, "start"); }} title="Start">
                         <Play className="h-4 w-4" />
                       </Button>
                     ) : (
-                      <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "stop")} title="Stop">
+                      <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={(e) => { e.stopPropagation(); runAction(c, "stop"); }} title="Stop">
                         <Square className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "restart")} title="Restart">
+                    <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={(e) => { e.stopPropagation(); runAction(c, "restart"); }} title="Restart">
                       <RotateCw className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => setLogsForContainer(c)} title="Logs">
+                    <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setLogsForContainer(c); }} title="Logs">
                       <Terminal className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeContainer(c)} title="Remove">
+                    <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); removeContainer(c); }} title="Remove">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -836,6 +785,16 @@ function ContainerStatusBadge({ status, state }: { status: string; state?: strin
   );
 }
 
+function portBadges(c: DockerContainer) {
+  return c.ports
+    .filter((p) => p.host)
+    .map((p, i) => (
+      <Badge key={`port-${i}`} variant="secondary" className="font-mono text-xs">
+        {p.host}:{p.container}
+      </Badge>
+    ));
+}
+
 function ContainerCards({
   containers,
   runAction,
@@ -845,6 +804,7 @@ function ContainerCards({
   selectAll,
   isSelected,
   dockerAvailable,
+  onContainerClick,
 }: {
   containers: CategorizedContainer[];
   runAction: (c: DockerContainer, action: "start" | "stop" | "restart") => void;
@@ -854,18 +814,19 @@ function ContainerCards({
   selectAll: (checked: boolean) => void;
   isSelected: (id: string) => boolean;
   dockerAvailable: boolean;
+  onContainerClick: (c: DockerContainer) => void;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {containers.map((c) => (
-        <Card key={c.id} className="p-3">
+        <Card key={c.id} className="p-3 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => onContainerClick(c)}>
           <div className="flex items-center justify-between mb-2">
             <Checkbox checked={isSelected(c.id)} onCheckedChange={() => toggleSelect(c.id)} />
             <div className="flex gap-1">
-              <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, c.status === "running" ? "stop" : "start")} title={c.status === "running" ? "Stop" : "Start"}>
+              <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={(e) => { e.stopPropagation(); runAction(c, c.status === "running" ? "stop" : "start"); }} title={c.status === "running" ? "Stop" : "Start"}>
                 {c.status === "running" ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
-              <Button size="icon" variant="ghost" onClick={() => setLogsForContainer(c)} title="Logs">
+              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setLogsForContainer(c); }} title="Logs">
                 <Terminal className="h-4 w-4" />
               </Button>
             </div>
@@ -886,10 +847,10 @@ function ContainerCards({
           </div>
           <div className="flex flex-wrap gap-1 mb-3">{portBadges(c)}</div>
           <div className="flex justify-end gap-1">
-            <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={() => runAction(c, "restart")} title="Restart">
+            <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={(e) => { e.stopPropagation(); runAction(c, "restart"); }} title="Restart">
               <RotateCw className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeContainer(c)} title="Remove">
+            <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); removeContainer(c); }} title="Remove">
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
@@ -898,6 +859,7 @@ function ContainerCards({
     </div>
   );
 }
+
 function BulkConfirm({
   open,
   action,
@@ -922,7 +884,7 @@ function BulkConfirm({
         <AlertDialogHeader>
           <AlertDialogTitle>Bulk {action} {count} container{count > 1 ? "s" : ""}?</AlertDialogTitle>
           <AlertDialogDescription>
-            {disabled ? reason : `This will ${action} ${count} selected container${count > 1 ? "s" : ""}.`}
+            {disabled ? reason : `This will ${action} ${count} selected container{count > 1 ? "s" : ""}.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -938,4 +900,8 @@ function BulkConfirm({
       </AlertDialogContent>
     </AlertDialog>
   );
+}
+
+function HelpMenuIcon({ className }: { className?: string }) {
+  return <HelpIcon className={className} />;
 }
