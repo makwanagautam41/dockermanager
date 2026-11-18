@@ -2,7 +2,6 @@ import { IsString, IsOptional, IsArray, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAiSessionDto {
-  @ApiProperty() @IsString() workspaceId: string;
   @ApiProperty() @IsString() name: string;
   @ApiPropertyOptional() @IsOptional() @IsString() model?: string;
   @ApiPropertyOptional() @IsOptional() @IsObject() options?: Record<string, any>;

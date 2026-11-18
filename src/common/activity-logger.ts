@@ -9,7 +9,7 @@ export class ActivityLogger {
   async log(workspaceId: string, kind: string, message: string): Promise<void> {
     try {
       await this.prisma.activity.create({
-        data: { id: uuid(), workspaceId, kind, message, ts: new Date() },
+        data: { id: uuid(), kind, message, ts: new Date() },
       });
     } catch {}
   }

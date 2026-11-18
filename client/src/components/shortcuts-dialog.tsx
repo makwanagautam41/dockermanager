@@ -13,7 +13,6 @@ const SHORTCUTS: Array<{ group: string; items: Array<{ keys: string[]; desc: str
     items: [
       { keys: ["⌘", "K"], desc: "Open command palette" },
       { keys: ["G", "D"], desc: "Go to Dashboard" },
-      { keys: ["G", "S"], desc: "Go to Stacks" },
       { keys: ["G", "C"], desc: "Go to Containers" },
       { keys: ["G", "Y"], desc: "Go to YAML explorer" },
       { keys: ["G", "A"], desc: "Go to AI assistant" },
@@ -22,7 +21,7 @@ const SHORTCUTS: Array<{ group: string; items: Array<{ keys: string[]; desc: str
   {
     group: "Actions",
     items: [
-      { keys: ["N"], desc: "New stack from template" },
+      { keys: ["N"], desc: "Create container" },
       { keys: ["/"], desc: "Focus search" },
       { keys: ["?"], desc: "Toggle this cheatsheet" },
       { keys: ["Esc"], desc: "Close dialog / panel" },
@@ -43,7 +42,8 @@ export function ShortcutsDialog() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
-      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      const typing =
+        el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (!typing && e.key === "?") {
         e.preventDefault();
         setOpen((v) => !v);
@@ -58,7 +58,7 @@ export function ShortcutsDialog() {
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-mono">Keyboard shortcuts</DialogTitle>
-          <DialogDescription>Move around Stackhand without leaving the keyboard.</DialogDescription>
+          <DialogDescription>Move around Docker Manager without leaving the keyboard.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 sm:grid-cols-3">
           {SHORTCUTS.map((g) => (

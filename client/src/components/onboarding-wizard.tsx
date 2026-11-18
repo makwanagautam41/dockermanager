@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
@@ -94,7 +94,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
       await refresh();
       toast.success(`Workspace "${name.trim()}" created`);
       onDone();
-      navigate({ to: "/dashboard" });
+      navigate("/containers");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -142,7 +142,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                     description: "Workspace created with starter content.",
                   });
                   onDone();
-                  navigate({ to: "/dashboard" });
+                  navigate("/containers");
                 }}
               >
                 <IconSparkles className="mr-1.5 h-3.5 w-3.5" stroke={1.75} /> Try sample
@@ -270,7 +270,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 <div>
                   <h2 className="text-xl font-semibold tracking-tight">Root folder</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Stackhand reads and manages YAML files inside this folder.
+                    Docker Manager reads and manages YAML files inside this folder.
                   </p>
                 </div>
                 <FolderPicker value={rootFolder} onChange={setRootFolder} />

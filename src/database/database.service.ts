@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 function stripBigInts<T>(value: T): T {
@@ -17,36 +21,56 @@ function stripBigInts<T>(value: T): T {
 export class DatabaseService {
   constructor(private prisma: PrismaService) {}
 
+  private quoteIdentifier(name: string) {
+    return `"${name.replace(/"/g, '""')}"`;
+  }
+
   async listTables(): Promise<string[]> {
     const result: { name: string }[] = await this.prisma.$queryRawUnsafe(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma_%' ORDER BY name`,
+      `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`,
     );
-    return result.map(r => r.name);
+    return result.map((r) => r.name);
   }
 
   async getTableSchema(table: string) {
     this.ensureTableName(table);
-    const columns: { cid: number; name: string; type: string; notnull: number; dflt_value: string | null; pk: number }[] =
-      await this.prisma.$queryRawUnsafe(`PRAGMA table_info("${table}")`);
-    const countResult: { count: number }[] = await this.prisma.$queryRawUnsafe(`SELECT COUNT(*) as count FROM "${table}"`);
+    const quotedTable = this.quoteIdentifier(table);
+    const columns: {
+      name: string;
+      type: string;
+      is_nullable: string;
+      column_default: string | null;
+      ordinal_position: number;
+    }[] = await this.prisma.$queryRawUnsafe(
+      `SELECT column_name AS name, data_type AS type, is_nullable, column_default, ordinal_position FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+      table,
+    );
+    const primaryKeys: { name: string }[] = await this.prisma.$queryRawUnsafe(
+      `SELECT kcu.column_name AS name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.table_schema = 'public' AND tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY' ORDER BY kcu.ordinal_position`,
+      table,
+    );
+    const countResult: { count: bigint }[] = await this.prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::bigint AS count FROM ${quotedTable}`,
+    );
+    const primaryKeySet = new Set(primaryKeys.map((c) => c.name));
     return stripBigInts({
       table,
-      columns: columns.map(c => ({
-        cid: c.cid,
+      columns: columns.map((c) => ({
         name: c.name,
         type: c.type,
-        notNull: !!c.notnull,
-        default: c.dflt_value,
-        primaryKey: !!c.pk,
+        notNull: c.is_nullable === 'NO',
+        default: c.column_default,
+        primaryKey: primaryKeySet.has(c.name),
       })),
-      rowCount: countResult[0]?.count ?? 0,
+      rowCount: Number(countResult[0]?.count ?? 0n),
     });
   }
 
   async getRows(table: string, limit = 50, offset = 0) {
     this.ensureTableName(table);
+    const quotedTable = this.quoteIdentifier(table);
     const rows: Record<string, any>[] = await this.prisma.$queryRawUnsafe(
-      `SELECT * FROM "${table}" LIMIT ${Number(limit)} OFFSET ${Number(offset)}`,
+      `SELECT * FROM ${quotedTable} LIMIT ${Number(limit)} OFFSET ${Number(offset)}`,
     );
     return stripBigInts(rows);
   }
@@ -54,39 +78,58 @@ export class DatabaseService {
   async getRow(table: string, id: string, pkColumn: string) {
     this.ensureTableName(table);
     this.ensureSafeString(pkColumn);
+    const quotedTable = this.quoteIdentifier(table);
+    const quotedPk = this.quoteIdentifier(pkColumn);
     const rows: Record<string, any>[] = await this.prisma.$queryRawUnsafe(
-      `SELECT * FROM "${table}" WHERE "${pkColumn}" = ? LIMIT 1`,
-      [id],
+      `SELECT * FROM ${quotedTable} WHERE ${quotedPk} = $1 LIMIT 1`,
+      id,
     );
     return rows[0] ? stripBigInts(rows[0]) : null;
   }
 
   async createRow(table: string, data: Record<string, any>) {
     this.ensureTableName(table);
+    const quotedTable = this.quoteIdentifier(table);
     const columns = Object.keys(data);
     const values = Object.values(data);
-    const placeholders = columns.map(() => '?').join(', ');
-    const quoted = columns.map(c => `"${c}"`).join(', ');
     try {
-      await this.prisma.$executeRawUnsafe(
-        `INSERT INTO "${table}" (${quoted}) VALUES (${placeholders})`,
+      if (columns.length === 0) {
+        const rows: Record<string, any>[] = await this.prisma.$queryRawUnsafe(
+          `INSERT INTO ${quotedTable} DEFAULT VALUES RETURNING *`,
+        );
+        return stripBigInts({ inserted: true, row: rows[0] ?? null });
+      }
+      const placeholders = columns
+        .map((_, index) => `$${index + 1}`)
+        .join(', ');
+      const quoted = columns.map((c) => this.quoteIdentifier(c)).join(', ');
+      const rows: Record<string, any>[] = await this.prisma.$queryRawUnsafe(
+        `INSERT INTO ${quotedTable} (${quoted}) VALUES (${placeholders}) RETURNING *`,
         ...values,
       );
-      const rowId: { last_insert_rowid: number }[] = await this.prisma.$queryRawUnsafe('SELECT last_insert_rowid() as last_insert_rowid');
-      return stripBigInts({ inserted: true, rowId: rowId[0]?.last_insert_rowid });
+      return stripBigInts({ inserted: true, row: rows[0] ?? null });
     } catch (e: any) {
       throw new InternalServerErrorException(e.message);
     }
   }
 
-  async updateRow(table: string, id: string, pkColumn: string, data: Record<string, any>) {
+  async updateRow(
+    table: string,
+    id: string,
+    pkColumn: string,
+    data: Record<string, any>,
+  ) {
     this.ensureTableName(table);
     this.ensureSafeString(pkColumn);
-    const setClauses = Object.keys(data).map(c => `"${c}" = ?`).join(', ');
+    const quotedTable = this.quoteIdentifier(table);
+    const quotedPk = this.quoteIdentifier(pkColumn);
+    const setClauses = Object.keys(data)
+      .map((c, index) => `${this.quoteIdentifier(c)} = $${index + 1}`)
+      .join(', ');
     const values = Object.values(data);
     try {
       await this.prisma.$executeRawUnsafe(
-        `UPDATE "${table}" SET ${setClauses} WHERE "${pkColumn}" = ?`,
+        `UPDATE ${quotedTable} SET ${setClauses} WHERE ${quotedPk} = $${values.length + 1}`,
         ...values,
         id,
       );
@@ -99,10 +142,12 @@ export class DatabaseService {
   async deleteRow(table: string, id: string, pkColumn: string) {
     this.ensureTableName(table);
     this.ensureSafeString(pkColumn);
+    const quotedTable = this.quoteIdentifier(table);
+    const quotedPk = this.quoteIdentifier(pkColumn);
     try {
       await this.prisma.$executeRawUnsafe(
-        `DELETE FROM "${table}" WHERE "${pkColumn}" = ?`,
-        [id],
+        `DELETE FROM ${quotedTable} WHERE ${quotedPk} = $1`,
+        id,
       );
       return { deleted: true };
     } catch (e: any) {
@@ -112,8 +157,11 @@ export class DatabaseService {
 
   async executeQuery(sql: string) {
     const trimmed = sql.trim().toUpperCase();
-    const isSelect = trimmed.startsWith('SELECT') || trimmed.startsWith('PRAGMA');
-    const isRead = isSelect || trimmed.startsWith('EXPLAIN');
+    const isRead =
+      trimmed.startsWith('SELECT') ||
+      trimmed.startsWith('WITH') ||
+      trimmed.startsWith('EXPLAIN') ||
+      trimmed.startsWith('SHOW');
     try {
       if (isRead) {
         const rows = await this.prisma.$queryRawUnsafe(sql);

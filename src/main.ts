@@ -6,6 +6,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { RequestLoggerMiddleware } from './common/request-logger.middleware';
 import compression from 'compression';
 import helmet from 'helmet';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const logger = new Logger('Bootstrap');
 
@@ -51,6 +53,12 @@ function isAllowedOrigin(origin?: string) {
 }
 
 async function bootstrap() {
+  // Ensure the YAML workspace directory exists (mounted volume or local folder)
+  const workspaceRoot = process.env.DEFAULT_WORKSPACE_ROOT?.trim();
+  if (workspaceRoot) {
+    fs.mkdirSync(path.resolve(workspaceRoot), { recursive: true });
+  }
+
   const app = await NestFactory.create(AppModule, {
     logger: process.env.NODE_ENV === 'production'
       ? ['error', 'warn', 'log']
@@ -86,7 +94,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Stackhand API')
+    .setTitle('Docker Manager API')
     .setDescription('Personal Docker/YAML stack manager API')
     .setVersion('1.0')
     .addBearerAuth()
@@ -102,7 +110,7 @@ async function bootstrap() {
 
   await app.listen(port, host);
   const printableHost = host === '0.0.0.0' ? '127.0.0.1' : host;
-  logger.log(`Stackhand backend running on http://${printableHost}:${port}`);
+  logger.log(`Docker Manager backend running on http://${printableHost}:${port}`);
   logger.log(`Swagger docs at http://${printableHost}:${port}/api/docs`);
 }
 

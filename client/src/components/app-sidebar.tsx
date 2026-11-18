@@ -1,17 +1,12 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useLocation } from "react-router-dom";
 import {
   IconBrandDocker,
-  IconDashboard,
   IconDatabase,
   IconFileCode,
-  IconRobot,
-  IconSettings,
-  IconStack2,
-  IconGauge,
-  IconBell,
-  IconFileText,
-  IconCloudDownload,
+  IconLayersLinked,
+  IconPlus,
   IconPhoto,
+  IconCloudDownload,
   IconDeviceDesktopAnalytics,
 } from "@tabler/icons-react";
 import {
@@ -26,22 +21,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 
 const GROUPS = [
   {
-    label: "Overview",
-    items: [
-      { title: "Dashboard", to: "/dashboard", icon: IconDashboard },
-      { title: "Metrics", to: "/metrics", icon: IconGauge },
-      { title: "Alerts", to: "/alerts", icon: IconBell },
-    ],
-  },
-  {
     label: "Manage",
     items: [
-      { title: "Stacks", to: "/stacks", icon: IconStack2 },
       { title: "Containers", to: "/containers", icon: IconBrandDocker },
+      { title: "Networks", to: "/networks", icon: IconLayersLinked },
+      { title: "Create from YAML", to: "/create/yaml", icon: IconPlus },
       { title: "Images", to: "/images", icon: IconPhoto },
       { title: "Volumes", to: "/volumes", icon: IconDatabase },
       { title: "Registry", to: "/registry", icon: IconCloudDownload },
@@ -49,29 +36,22 @@ const GROUPS = [
   },
   {
     label: "Files",
-    items: [
-      { title: "Explorer", to: "/yaml", icon: IconFileCode },
-      { title: "Env files", to: "/env", icon: IconFileText },
-    ],
+    items: [{ title: "Explorer", to: "/yaml", icon: IconFileCode }],
   },
   {
     label: "Tools",
-    items: [
-      { title: "AI Assistant", to: "/ai", icon: IconRobot },
-      { title: "Setup", to: "/setup", icon: IconDeviceDesktopAnalytics },
-      { title: "Settings", to: "/settings", icon: IconSettings },
-    ],
+    items: [{ title: "Setup", to: "/setup", icon: IconDeviceDesktopAnalytics }],
   },
 ] as const;
 
 export function AppSidebar() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { pathname } = useLocation();
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b p-3 group-data-[collapsible=icon]:p-2">
         <Link
-          to="/dashboard"
+          to="/containers"
           className="flex items-center gap-2 px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md">
@@ -79,16 +59,13 @@ export function AppSidebar() {
           </div>
           <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-mono text-sm font-semibold tracking-tight">
-              stackhand
+              Docker Manager
             </span>
             <span className="truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               stack manager
             </span>
           </div>
         </Link>
-        <div className="mt-3 group-data-[collapsible=icon]:hidden">
-          <WorkspaceSwitcher compact />
-        </div>
       </SidebarHeader>
       <SidebarContent>
         {GROUPS.map((g) => (

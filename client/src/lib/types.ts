@@ -100,7 +100,20 @@ export interface ActivityEvent {
   id: string;
   ts: string;
   message: string;
-  kind: "start" | "stop" | "create" | "delete" | "edit" | "error" | "alert";
+  kind:
+    | "start"
+    | "stop"
+    | "restart"
+    | "create"
+    | "delete"
+    | "edit"
+    | "error"
+    | "alert"
+    | "pull"
+    | "backup"
+    | "restore"
+    | "success"
+    | "info";
 }
 
 export interface ChatMessage {
@@ -220,11 +233,21 @@ export interface DashboardData {
 export interface DockerStatus {
   running: boolean;
   version: string | null;
+  apiVersion?: string | null;
+  kernel?: string | null;
   containers: number;
   runningContainers: number;
+  pausedContainers?: number;
+  stoppedContainers?: number;
   images: number;
   os: string | null;
   architecture: string | null;
+  cpus?: number;
+  totalMemory?: number;
+  storageDriver?: string | null;
+  dockerRootDir?: string | null;
+  hostname?: string | null;
+  ostype?: string | null;
 }
 
 export interface OllamaStatus {
@@ -328,4 +351,25 @@ export interface SearchLog {
   engine: string;
   results: number;
   createdAt: string;
+}
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+  enable_ipv6: boolean;
+  ipam: any;
+  containers: Record<string, { Name: string; IPv4Address: string; IPv6Address: string; MacAddress: string }>;
+  created: string;
+  labels: Record<string, string>;
+  options: Record<string, string>;
+}
+
+export interface DockerNetworkContainer {
+  Name: string;
+  IPv4Address: string;
+  IPv6Address: string;
+  MacAddress: string;
 }

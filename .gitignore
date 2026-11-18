@@ -2,6 +2,7 @@
 /dist
 /node_modules
 /build
+/docker-yaml-files
 
 # Logs
 logs
@@ -62,7 +63,7 @@ dev.db
 workspaces-data/
 
 # Removed artifacts (previously tracked, now gitignored)
-stackhand-audit.md
+dockermanager-audit.md
 ecosystem.config.cjs
 client/AGENTS.md
 client/bun.lock

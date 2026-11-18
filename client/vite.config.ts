@@ -1,10 +1,7 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - tanstackStart, viteReact, tailwindcss, tsConfigPaths, nitro (build-only using cloudflare as a default target),
-//     componentTagger (dev-only), VITE_* env injection, @ path alias, React/TanStack dedupe,
-//     error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import tsconfigPaths from "vite-tsconfig-paths";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,8 +27,8 @@ function readRootEnv() {
 
 function getBackendOrigin(rootEnv: Map<string, string>) {
   const explicit =
-    process.env.STACKHAND_BACKEND_ORIGIN ||
-    rootEnv.get("STACKHAND_BACKEND_ORIGIN");
+    process.env.DOCKERMANAGER_BACKEND_ORIGIN ||
+    rootEnv.get("DOCKERMANAGER_BACKEND_ORIGIN");
   if (explicit) return explicit.replace(/\/$/, "");
 
   const host = process.env.HOST || rootEnv.get("HOST") || "127.0.0.1";
@@ -48,34 +45,26 @@ function getFrontendPort(rootEnv: Map<string, string>) {
 }
 
 function getApiToken(rootEnv: Map<string, string>) {
-  return process.env.STACKHAND_API_TOKEN || rootEnv.get("STACKHAND_API_TOKEN") || "dev-token";
-}
-
-function getDefaultWorkspaceRoot(rootEnv: Map<string, string>) {
-  return process.env.DEFAULT_WORKSPACE_ROOT || rootEnv.get("DEFAULT_WORKSPACE_ROOT") || "";
+  return process.env.DOCKERMANAGER_API_TOKEN || rootEnv.get("DOCKERMANAGER_API_TOKEN") || "dev-token";
 }
 
 const rootEnv = readRootEnv();
 const backendOrigin = getBackendOrigin(rootEnv);
 const frontendPort = getFrontendPort(rootEnv);
 const apiToken = getApiToken(rootEnv);
-const defaultWorkspaceRoot = getDefaultWorkspaceRoot(rootEnv);
 
 export default defineConfig({
-  tanstackStart: {
-    server: { entry: "server" },
+  plugins: [react(), tailwindcss(), tsconfigPaths()],
+  define: {
+    "import.meta.env.VITE_DOCKERMANAGER_API_TOKEN": JSON.stringify(apiToken),
+    "import.meta.env.VITE_DOCKERMANAGER_BACKEND_ORIGIN": JSON.stringify(backendOrigin),
+    "import.meta.env.VITE_DEFAULT_WORKSPACE_ROOT": JSON.stringify("docker-yaml-files"),
   },
-  vite: {
-    define: {
-      "import.meta.env.VITE_STACKHAND_API_TOKEN": JSON.stringify(apiToken),
-      "import.meta.env.VITE_DEFAULT_WORKSPACE_ROOT": JSON.stringify(defaultWorkspaceRoot),
-    },
-    server: {
-      port: frontendPort,
-      proxy: {
-        "/api": { target: backendOrigin, changeOrigin: true },
-        "/socket.io": { target: backendOrigin, ws: true, changeOrigin: true },
-      },
+  server: {
+    port: frontendPort,
+    proxy: {
+      "/api": { target: backendOrigin, changeOrigin: true },
+      "/socket.io": { target: backendOrigin, ws: true, changeOrigin: true },
     },
   },
 });

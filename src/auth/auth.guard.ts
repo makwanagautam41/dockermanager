@@ -18,7 +18,7 @@ export class ApiKeyGuard implements CanActivate {
     private reflector: Reflector,
   ) {
     this.expectedToken = this.configService.get<string>(
-      'STACKHAND_API_TOKEN',
+      'DOCKERMANAGER_API_TOKEN',
       'dev-token',
     );
   }

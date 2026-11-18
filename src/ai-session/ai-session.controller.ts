@@ -25,10 +25,9 @@ export class AiSessionController {
   constructor(private service: AiSessionService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List AI sessions for a workspace' })
-  @ApiQuery({ name: 'workspaceId', required: true })
-  findAll(@Query('workspaceId') workspaceId: string) {
-    return this.service.findAll(workspaceId);
+  @ApiOperation({ summary: 'List AI sessions' })
+  findAll() {
+    return this.service.findAll();
   }
 
   @Get(':id')

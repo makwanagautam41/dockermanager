@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { createPrismaClientOptions } from './prisma-client';
+import { getDatabaseConnectionString } from './database-config';
 
 @Injectable()
 export class PrismaService
@@ -8,15 +9,15 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    super(createPrismaClientOptions());
+    super({
+      adapter: new PrismaPg({
+        connectionString: getDatabaseConnectionString(),
+      }),
+    });
   }
 
   async onModuleInit() {
     await this.$connect();
-    try {
-      await this.$executeRawUnsafe('PRAGMA journal_mode=WAL');
-      await this.$executeRawUnsafe('PRAGMA busy_timeout=5000');
-    } catch {}
   }
 
   async onModuleDestroy() {

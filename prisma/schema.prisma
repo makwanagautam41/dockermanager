@@ -3,46 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-}
-
-model Workspace {
-  id             String   @id @default(uuid())
-  name           String
-  description    String?
-  color          String   @default("#6366f1")
-  icon           String   @default("Server")
-  rootFolderPath String   @default("")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  stacks   Stack[]
-  activity Activity[]
-  snippets Snippet[]
-  alerts   AlertRule[]
-  envFiles EnvFile[]
-  chats    ChatMessage[]
-  backedUpFiles YamlBackup[]
-  aiSessions  AiSession[]
-}
-
-model Stack {
-  id           String   @id @default(uuid())
-  name         String
-  folderPath   String   
-  status       String   @default("unknown")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  containers    Container[]
-  yamlVersions  YamlVersion[]
-  chats         ChatMessage[]
-
-  @@index([workspaceId])
-  @@index([status])
+  provider = "postgresql"
 }
 
 model Container {
@@ -52,11 +13,7 @@ model Container {
   image     String
   status    String   @default("unknown")
   createdAt DateTime @default(now())
-
-  stackId String?
-  stack   Stack?  @relation(fields: [stackId], references: [id], onDelete: SetNull)
-
-  @@index([stackId])
+  
   @@index([status])
 }
 
@@ -65,9 +22,6 @@ model YamlVersion {
   content   String
   message   String?
   ts        DateTime @default(now())
-
-  stackId String
-  stack   Stack   @relation(fields: [stackId], references: [id], onDelete: Cascade)
 }
 
 model ChatMessage {
@@ -76,11 +30,6 @@ model ChatMessage {
   content   String   
   yaml      String?
   ts        DateTime @default(now())
-
-  workspaceId String?
-  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  stackId     String?
-  stack       Stack?     @relation(fields: [stackId], references: [id], onDelete: Cascade)
 }
 
 model Snippet {
@@ -90,9 +39,6 @@ model Snippet {
   tags        String   @default("[]")
   yaml        String
   createdAt   DateTime @default(now())
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model AlertRule {
@@ -104,20 +50,13 @@ model AlertRule {
   enabled       Boolean  @default(true)
   lastTriggered String?
   createdAt     DateTime @default(now())
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model EnvFile {
   id        String   @id @default(uuid())
   path      String
-  stackName String?
   vars      String   @default("[]")
   createdAt DateTime @default(now())
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Activity {
@@ -126,10 +65,6 @@ model Activity {
   message     String
   ts          DateTime @default(now())
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
   @@index([ts])
 }
 
@@ -145,12 +80,8 @@ model AiSession {
   options   String   @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  workspaceId String
-  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
   messages    AiMessage[]
-
-  @@index([workspaceId])
 }
 
 model AiMessage {
@@ -179,7 +110,4 @@ model YamlBackup {
   filePath  String
   content   String
   ts        DateTime @default(now())
-
-  workspaceId String?
-  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }

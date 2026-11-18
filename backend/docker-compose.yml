@@ -1,0 +1,60 @@
+name: dockermanager
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: dockermanager-prod-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - '1234:5432'
+    volumes:
+      - dockermanager_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    ports:
+      - '22443:22443'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PORT=22443
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DOCKERMANAGER_API_TOKEN=${DOCKERMANAGER_API_TOKEN}
+      - DOCKERMANAGER_ADMIN_USER=${DOCKERMANAGER_ADMIN_USER}
+      - DOCKERMANAGER_ADMIN_PASSWORD=${DOCKERMANAGER_ADMIN_PASSWORD}
+      - DOCKERMANAGER_OAUTH_CLIENT_ID=${DOCKERMANAGER_OAUTH_CLIENT_ID}
+      - DOCKERMANAGER_OAUTH_CLIENT_SECRET=${DOCKERMANAGER_OAUTH_CLIENT_SECRET}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - DEFAULT_WORKSPACE_ROOT=/app/docker-yaml-files
+    volumes:
+      - ../docker-yaml-files:/app/docker-yaml-files
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:22443/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  dockermanager_prod_data:
+    external: true
+    name: dockermanager_prod_data

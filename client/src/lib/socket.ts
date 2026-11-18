@@ -7,7 +7,7 @@ let socket: Socket | null = null;
 function getSocketOrigin() {
   const configured =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    process.env.API_URL;
+    (typeof process !== "undefined" && process.env.API_URL);
   if (configured) {
     return configured.replace(/\/api\/?$/, "").replace(/\/$/, "");
   }
@@ -18,7 +18,11 @@ function getSocketOrigin() {
     return undefined;
   }
 
-  return "http://127.0.0.1:4000";
+  return (
+    (typeof import.meta !== "undefined" &&
+      (import.meta.env as any)?.VITE_DOCKERMANAGER_BACKEND_ORIGIN) ||
+    "http://127.0.0.1:22443"
+  );
 }
 
 export function getSocket(): Socket {

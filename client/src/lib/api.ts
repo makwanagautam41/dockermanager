@@ -20,12 +20,12 @@ import type {
 } from "./types";
 import type { DockerStatus, YamlFile } from "./types";
 
-const TOKEN_KEY = "stackhand-api-token";
+const TOKEN_KEY = "dockermanager-api-token";
 
 function getApiBase(): string {
   const configured =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    process.env.API_URL;
+    (typeof process !== "undefined" && process.env.API_URL);
   if (configured) return configured.replace(/\/$/, "");
 
   // In the browser, default to the current origin so the Vite proxy or
@@ -34,15 +34,19 @@ function getApiBase(): string {
     return "/api";
   }
 
-  return "http://127.0.0.1:4000/api";
+  const backendOrigin =
+    (typeof import.meta !== "undefined" &&
+      (import.meta.env as any)?.VITE_DOCKERMANAGER_BACKEND_ORIGIN) ||
+    "http://127.0.0.1:22443";
+  return `${backendOrigin.replace(/\/$/, "")}/api`;
 }
 
 function getToken(): string {
   const envToken =
-    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_STACKHAND_API_TOKEN) ||
-    (typeof process !== "undefined" && process.env.STACKHAND_API_TOKEN);
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_DOCKERMANAGER_API_TOKEN) ||
+    (typeof process !== "undefined" && process.env.DOCKERMANAGER_API_TOKEN);
   if (envToken) return envToken;
-  if (typeof window === 'undefined') return "dev-token";
+  if (typeof window === "undefined") return "dev-token";
   return localStorage.getItem(TOKEN_KEY) || "dev-token";
 }
 
@@ -133,7 +137,13 @@ export const api = {
     return mapWorkspace(data);
   },
 
-  async createWorkspace(data: { name: string; description?: string; color?: string; icon?: string; rootFolderPath?: string }) {
+  async createWorkspace(data: {
+    name: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+    rootFolderPath?: string;
+  }) {
     const res = await request<BackendWorkspace>("/workspaces", {
       method: "POST",
       body: JSON.stringify(data),
@@ -141,7 +151,16 @@ export const api = {
     return mapWorkspace(res);
   },
 
-  async updateWorkspace(id: string, data: { name?: string; description?: string; color?: string; icon?: string; rootFolderPath?: string }) {
+  async updateWorkspace(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      color?: string;
+      icon?: string;
+      rootFolderPath?: string;
+    },
+  ) {
     const res = await request<BackendWorkspace>(`/workspaces/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -172,10 +191,13 @@ export const api = {
   },
 
   async browseFolder(basePath: string, subPath?: string) {
-    return request<{ name: string; type: string; size: number; modifiedAt: string }[]>("/filesystem/browse", {
-      method: "POST",
-      body: JSON.stringify({ basePath, subPath }),
-    });
+    return request<{ name: string; type: string; size: number; modifiedAt: string }[]>(
+      "/filesystem/browse",
+      {
+        method: "POST",
+        body: JSON.stringify({ basePath, subPath }),
+      },
+    );
   },
 
   async readFile(filePath: string) {
@@ -231,7 +253,10 @@ export const api = {
     return mapStackDetail(data);
   },
 
-  async createStack(workspaceId: string, data: { name: string; yaml: string; folderName?: string; envContent?: string }) {
+  async createStack(
+    workspaceId: string,
+    data: { name: string; yaml: string; folderName?: string; envContent?: string },
+  ) {
     const res = await request<BackendStack>(`/workspaces/${workspaceId}/stacks`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -286,14 +311,13 @@ export const api = {
   },
 
   // ---- Containers ----
-  async listContainers(workspaceId?: string) {
-    const query = workspaceId ? `?workspaceId=${workspaceId}` : "";
-    const data = await request<any[]>(`/containers${query}`);
+  async listContainers() {
+    const data = await request<any[]>(`/containers`);
     return data.map((c: any) => ({
       id: c.id,
       name: c.name,
       image: c.image,
-      status: c.status || "unknown",  // machine state: "running", "exited", etc.
+      status: c.status || "unknown", // machine state: "running", "exited", etc.
       state: c.state || c.status || "unknown", // human-readable: "Up 2 hours", etc.
       ports: (c.ports || []).map((p: any) => ({
         host: p.host || 0,
@@ -314,8 +338,18 @@ export const api = {
     return request<{ message: string }>(`/containers/${id}/start`, { method: "POST" });
   },
 
-  async createContainer(data: { image: string; name?: string; port?: number; env?: Record<string, string>; volumes?: string[]; cmd?: string[] }) {
-    return request<{ id: string; name: string; image: string; status: string }>("/containers", { method: "POST", body: JSON.stringify(data) });
+  async createContainer(data: {
+    image: string;
+    name?: string;
+    port?: number;
+    env?: Record<string, string>;
+    volumes?: string[];
+    cmd?: string[];
+  }) {
+    return request<{ id: string; name: string; image: string; status: string }>("/containers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async stopContainer(id: string) {
@@ -335,7 +369,13 @@ export const api = {
   },
 
   async containerLogs(id: string, tail = 200) {
-    return request<string>(`/containers/${id}/logs?tail=${tail}`);
+    const res = await fetch(`${getApiBase()}/containers/${id}/logs?tail=${tail}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return res.text();
   },
 
   // ---- Images ----
@@ -359,12 +399,25 @@ export const api = {
   },
 
   async removeImage(name: string) {
-    return request<{ message: string }>(`/images/${encodeURIComponent(name)}`, { method: "DELETE" });
+    return request<{ message: string }>(`/images/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
   },
 
   // ---- Volumes ----
   async listVolumes() {
-    return request<{ name: string; driver: string; mountpoint: string; scope: string; size: number; refCount: number; created: string; labels: Record<string, string> }[]>("/volumes");
+    return request<
+      {
+        name: string;
+        driver: string;
+        mountpoint: string;
+        scope: string;
+        size: number;
+        refCount: number;
+        created: string;
+        labels: Record<string, string>;
+      }[]
+    >("/volumes");
   },
 
   async inspectVolume(name: string) {
@@ -372,7 +425,9 @@ export const api = {
   },
 
   async removeVolume(name: string) {
-    return request<{ message: string }>(`/volumes/${encodeURIComponent(name)}`, { method: "DELETE" });
+    return request<{ message: string }>(`/volumes/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
   },
 
   async pruneVolumes() {
@@ -381,29 +436,39 @@ export const api = {
 
   // ---- Volume Files ----
   async browseVolumeFiles(name: string, subPath?: string) {
-    const qs = subPath ? `?path=${encodeURIComponent(subPath)}` : '';
+    const qs = subPath ? `?path=${encodeURIComponent(subPath)}` : "";
     return request<any>(`/volumes/${encodeURIComponent(name)}/files${qs}`);
   },
 
   async readVolumeFile(name: string, filePath: string) {
-    return request<{ path: string; content: string; size: number }>(`/volumes/${encodeURIComponent(name)}/files/read?path=${encodeURIComponent(filePath)}`);
+    return request<{ path: string; content: string; size: number }>(
+      `/volumes/${encodeURIComponent(name)}/files/read?path=${encodeURIComponent(filePath)}`,
+    );
   },
 
   async getVolumeUsage(name: string) {
-    return request<{ totalFiles: number; totalSize: number; mountpoint: string }>(`/volumes/${encodeURIComponent(name)}/usage`);
+    return request<{ totalFiles: number; totalSize: number; mountpoint: string }>(
+      `/volumes/${encodeURIComponent(name)}/usage`,
+    );
   },
 
   // ---- Registry ----
   async registrySearch(query: string, page = 1, pageSize = 25) {
-    return request<{ results: any[]; total: number; page: number; pageSize: number }>(`/registry/search?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`);
+    return request<{ results: any[]; total: number; page: number; pageSize: number }>(
+      `/registry/search?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
+    );
   },
 
   async registryRepository(namespace: string, repo: string) {
-    return request<any>(`/registry/repository/${encodeURIComponent(namespace)}/${encodeURIComponent(repo)}`);
+    return request<any>(
+      `/registry/repository/${encodeURIComponent(namespace)}/${encodeURIComponent(repo)}`,
+    );
   },
 
   async registryTags(namespace: string, repo: string, page = 1, pageSize = 50) {
-    return request<{ results: any[]; total: number; page: number; pageSize: number }>(`/registry/repository/${encodeURIComponent(namespace)}/${encodeURIComponent(repo)}/tags?page=${page}&pageSize=${pageSize}`);
+    return request<{ results: any[]; total: number; page: number; pageSize: number }>(
+      `/registry/repository/${encodeURIComponent(namespace)}/${encodeURIComponent(repo)}/tags?page=${page}&pageSize=${pageSize}`,
+    );
   },
 
   registryPullStreamUrl(name: string) {
@@ -411,15 +476,35 @@ export const api = {
   },
 
   async registryPull(name: string) {
-    return request<{ message: string }>("/registry/pull", { method: "POST", body: JSON.stringify({ name }) });
+    return request<{ message: string }>("/registry/pull", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
   },
 
-  async registryGenerateCompose(data: { image: string; name?: string; port?: number; env?: Record<string, string>; volumes?: string[] }) {
-    return request<{ yaml: string; image: string; name: string }>("/registry/generate-compose", { method: "POST", body: JSON.stringify(data) });
+  async registryGenerateCompose(data: {
+    image: string;
+    name?: string;
+    port?: number;
+    env?: Record<string, string>;
+    volumes?: string[];
+  }) {
+    return request<{ yaml: string; image: string; name: string }>("/registry/generate-compose", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
-  async registrySaveToWorkspace(data: { workspaceRoot: string; folderName: string; yaml: string; description?: string }) {
-    return request<{ message: string; path: string }>("/registry/save-workspace", { method: "POST", body: JSON.stringify(data) });
+  async registrySaveToWorkspace(data: {
+    workspaceRoot: string;
+    folderName: string;
+    yaml: string;
+    description?: string;
+  }) {
+    return request<{ message: string; path: string }>("/registry/save-workspace", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async registryPopular() {
@@ -436,7 +521,9 @@ export const api = {
   },
 
   async ollamaModels() {
-    return request<{ id: string; name: string; size: number; modifiedAt: string }[]>("/ollama/models");
+    return request<{ id: string; name: string; size: number; modifiedAt: string }[]>(
+      "/ollama/models",
+    );
   },
 
   async ollamaModelInfo(name: string) {
@@ -551,38 +638,58 @@ export const api = {
     return request<{ alive: boolean }>("/docker/ping");
   },
 
+  async listNetworks() {
+    return request<any[]>("/docker/networks");
+  },
+
+  async getNetwork(id: string) {
+    return request<any>(`/docker/networks/${encodeURIComponent(id)}`);
+  },
+
+  async connectContainerToNetwork(networkId: string, containerId: string) {
+    return request<{ success: boolean }>(`/docker/networks/${encodeURIComponent(networkId)}/connect`, {
+      method: "POST",
+      body: JSON.stringify({ containerId }),
+    });
+  },
+
+  async disconnectContainerFromNetwork(networkId: string, containerId: string) {
+    return request<{ success: boolean }>(`/docker/networks/${encodeURIComponent(networkId)}/disconnect`, {
+      method: "POST",
+      body: JSON.stringify({ containerId }),
+    });
+  },
+
   // ---- Backups ----
   async backupWorkspace(workspaceId: string) {
-    return request<{ message: string; path: string; timestamp: string; files: number }>(`/workspaces/${workspaceId}/backup`, { method: "POST" });
+    return request<{ message: string; path: string; timestamp: string; files: number }>(
+      `/workspaces/${workspaceId}/backup`,
+      { method: "POST" },
+    );
   },
 
   async listBackups(workspaceId: string) {
-    return request<{ name: string; path: string; createdAt: string; fileCount: number; size: number }[]>(`/workspaces/${workspaceId}/backups`);
+    return request<
+      { name: string; path: string; createdAt: string; fileCount: number; size: number }[]
+    >(`/workspaces/${workspaceId}/backups`);
   },
 
   async restoreBackup(workspaceId: string, snapshotName: string) {
-    return request<{ message: string; path: string }>(`/workspaces/${workspaceId}/backups/${snapshotName}/restore`, { method: "POST" });
+    return request<{ message: string; path: string }>(
+      `/workspaces/${workspaceId}/backups/${snapshotName}/restore`,
+      { method: "POST" },
+    );
   },
 
   async deleteBackup(workspaceId: string, snapshotName: string) {
-    return request<{ message: string }>(`/workspaces/${workspaceId}/backups/${snapshotName}`, { method: "DELETE" });
+    return request<{ message: string }>(`/workspaces/${workspaceId}/backups/${snapshotName}`, {
+      method: "DELETE",
+    });
   },
 
   // ---- Dashboard ----
   async getDashboard() {
     return request<DashboardData>("/dashboard");
-  },
-
-  // ---- Settings ----
-  async getSettings() {
-    return request<Record<string, any>>("/settings");
-  },
-
-  async updateSettings(value: Record<string, any>) {
-    return request<Record<string, any>>("/settings", {
-      method: "PUT",
-      body: JSON.stringify(value),
-    });
   },
 
   // ---- Database ----
@@ -591,39 +698,65 @@ export const api = {
   },
 
   async dbGetTableSchema(table: string) {
-    return request<{ table: string; columns: { cid: number; name: string; type: string; notNull: boolean; default: string | null; primaryKey: boolean }[]; rowCount: number }>(`/db/${encodeURIComponent(table)}/schema`);
+    return request<{
+      table: string;
+      columns: {
+        cid: number;
+        name: string;
+        type: string;
+        notNull: boolean;
+        default: string | null;
+        primaryKey: boolean;
+      }[];
+      rowCount: number;
+    }>(`/db/${encodeURIComponent(table)}/schema`);
   },
 
   async dbGetRows(table: string, limit = 50, offset = 0) {
-    return request<Record<string, any>[]>(`/db/${encodeURIComponent(table)}/rows?limit=${limit}&offset=${offset}`);
+    return request<Record<string, any>[]>(
+      `/db/${encodeURIComponent(table)}/rows?limit=${limit}&offset=${offset}`,
+    );
   },
 
   async dbGetRow(table: string, id: string, pk = "id") {
-    return request<Record<string, any> | null>(`/db/${encodeURIComponent(table)}/rows/${encodeURIComponent(id)}?pk=${encodeURIComponent(pk)}`);
+    return request<Record<string, any> | null>(
+      `/db/${encodeURIComponent(table)}/rows/${encodeURIComponent(id)}?pk=${encodeURIComponent(pk)}`,
+    );
   },
 
   async dbCreateRow(table: string, data: Record<string, any>) {
-    return request<{ inserted: boolean; rowId: number }>(`/db/${encodeURIComponent(table)}/rows`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    return request<{ inserted: boolean; row: Record<string, any> | null }>(
+      `/db/${encodeURIComponent(table)}/rows`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
   },
 
   async dbUpdateRow(table: string, id: string, data: Record<string, any>, pk = "id") {
-    return request<{ updated: boolean }>(`/db/${encodeURIComponent(table)}/rows/${encodeURIComponent(id)}?pk=${encodeURIComponent(pk)}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+    return request<{ updated: boolean }>(
+      `/db/${encodeURIComponent(table)}/rows/${encodeURIComponent(id)}?pk=${encodeURIComponent(pk)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+    );
   },
 
   async dbDeleteRow(table: string, id: string, pk = "id") {
-    return request<{ deleted: boolean }>(`/db/${encodeURIComponent(table)}/rows/${encodeURIComponent(id)}?pk=${encodeURIComponent(pk)}`, {
-      method: "DELETE",
-    });
+    return request<{ deleted: boolean }>(
+      `/db/${encodeURIComponent(table)}/rows/${encodeURIComponent(id)}?pk=${encodeURIComponent(pk)}`,
+      {
+        method: "DELETE",
+      },
+    );
   },
 
   async dbExecuteQuery(sql: string) {
-    return request<{ type: "select"; rows: Record<string, any>[] } | { type: "execute"; affected: number }>("/db/query", {
+    return request<
+      { type: "select"; rows: Record<string, any>[] } | { type: "execute"; affected: number }
+    >("/db/query", {
       method: "POST",
       body: JSON.stringify({ sql }),
     });
