@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { IconBug, IconCheck, IconCopy, IconDownload, IconHistory, IconLayout, IconLoader2, IconUpload, IconX } from "@tabler/icons-react";
+import { IconBug, IconCheck, IconCopy, IconDownload, IconHistory, IconLayout, IconLoader2, IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import * as jsYaml from "js-yaml";
-import { Textarea } from "@/components/ui/textarea";
 import { analyzeYaml, type Finding, type AnalyzeResult } from "@/lib/compose-analyzer";
 import { api } from "@/lib/api";
 
@@ -39,8 +38,6 @@ export default function CreateYamlPage() {
   const [originalYaml, setOriginalYaml] = useState(DEFAULT_YAML);
   const [analysis, setAnalysis] = useState<AnalyzeResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [showPaste, setShowPaste] = useState(false);
-  const [pasteText, setPasteText] = useState("");
   const [deployConfirm, setDeployConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
@@ -144,10 +141,6 @@ export default function CreateYamlPage() {
           <h1 className="text-xl font-semibold tracking-tight">Create from YAML</h1>
         </div>
         <div className="flex items-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowPaste(true)}>
-            <IconUpload className="mr-1.5 h-3.5 w-3.5" stroke={1.5} />
-            Paste YAML
-          </Button>
           <Button
             onClick={handleDeploy}
             disabled={!canDeploy}
@@ -245,22 +238,6 @@ export default function CreateYamlPage() {
           </ScrollArea>
         </Card>
       )}
-
-      {/* Paste dialog */}
-      <Dialog open={showPaste} onOpenChange={setShowPaste}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Paste YAML</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 p-4">
-            <Textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={10} className="font-mono text-xs" placeholder="Paste docker-compose.yml here…" />
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => { setShowPaste(false); setPasteText(""); }}>Cancel</Button>
-              <Button onClick={() => { setYaml(pasteText || DEFAULT_YAML); setOriginalYaml(pasteText || DEFAULT_YAML); setShowPaste(false); setPasteText(""); }}>Load</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
