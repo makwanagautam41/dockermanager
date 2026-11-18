@@ -702,20 +702,20 @@ function DockerStatusBadge({ docker }: { docker: ReturnType<typeof useHealth> })
 }
 
 function ColumnHeader({
-  key,
+  dataKey,
   label,
   sort,
   setSort,
 }: {
-  key: string;
+  dataKey: string;
   label: string;
   sort: { key: string; dir: "asc" | "desc" };
   setSort: (s: { key: string; dir: "asc" | "desc" }) => void;
 }) {
-  const active = sort.key === key;
+  const active = sort.key === dataKey;
   const dir = active ? sort.dir : "asc";
   return (
-    <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer select-none" onClick={() => setSort({ key, dir: active && dir === "asc" ? "desc" : "asc" })}>
+    <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer select-none" onClick={() => setSort({ key: dataKey, dir: active && dir === "asc" ? "desc" : "asc" })}>
       {label}
       {active && (dir === "asc" ? <span className="ml-1 text-xs">▲</span> : <span className="ml-1 text-xs">▼</span>)}
     </TableHead>
@@ -761,12 +761,12 @@ function ContainerTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHeader className="w-10">
+            <TableHead className="w-10">
               <Checkbox checked={allSelected} onCheckedChange={selectAll} />
-            </TableHeader>
-            <ColumnHeader key="name" label="Name" sort={sort} setSort={setSort} />
-            <ColumnHeader key="image" label="Image" sort={sort} setSort={setSort} />
-            <ColumnHeader key="category" label="Category" sort={sort} setSort={setSort} />
+            </TableHead>
+            <ColumnHeader dataKey="name" label="Name" sort={sort} setSort={setSort} />
+            <ColumnHeader dataKey="image" label="Image" sort={sort} setSort={setSort} />
+            <ColumnHeader dataKey="category" label="Category" sort={sort} setSort={setSort} />
             <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</TableHead>
             <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Ports</TableHead>
             <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right">Actions</TableHead>
