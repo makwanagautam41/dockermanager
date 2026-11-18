@@ -65,6 +65,7 @@ export function YamlEditor({
   readOnly,
   onExplain,
   onFix,
+  onCopy,
 }: {
   value: string;
   filename?: string;
@@ -72,6 +73,7 @@ export function YamlEditor({
   readOnly?: boolean;
   onExplain?: (yaml: string) => void;
   onFix?: (yaml: string) => void;
+  onCopy?: (text: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -136,8 +138,13 @@ export function YamlEditor({
   };
 
   const copy = async () => {
-    await navigator.clipboard.writeText(source);
-    toast.success("Copied to clipboard");
+    try {
+      if (onCopy) await onCopy(source);
+      else await navigator.clipboard.writeText(source);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Clipboard not available");
+    }
   };
 
   const download = () => {

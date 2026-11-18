@@ -30,22 +30,7 @@ export class ContainerService {
 
   async findOne(id: string) {
     const container = docker.getContainer(id);
-    const info = await container.inspect();
-    return {
-      id: info.Id,
-      name: info.Name.replace(/^\//, ''),
-      image: info.Config.Image,
-      status: info.State.Status,
-      ports: info.NetworkSettings?.Ports ?? {},
-      env: info.Config.Env,
-      mounts: info.Mounts?.map((m) => ({
-        source: m.Source,
-        destination: m.Destination,
-        mode: m.Mode,
-        rw: m.RW,
-      })),
-      networkSettings: info.NetworkSettings?.Networks,
-    };
+    return container.inspect();
   }
 
   async start(id: string) {

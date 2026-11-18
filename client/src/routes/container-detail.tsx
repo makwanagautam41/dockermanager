@@ -31,16 +31,19 @@ export default function ContainerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [fetchError, setFetchError] = useState("");
 
   const fetchContainer = async () => {
     if (!containerId) return;
     setLoading(true);
+    setFetchError("");
     try {
       const data = await api.inspectContainer(containerId);
       setContainer(data);
     } catch (e: any) {
-      toast.error(`Failed to load container: ${e.message}`);
-      navigate("/containers");
+      const message = e?.message || "Failed to load container";
+      setFetchError(message);
+      toast.error(`Failed to load container: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -93,6 +96,22 @@ export default function ContainerDetailPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <IconLoader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+  if (fetchError) {
+    return (
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
+        <p className="text-sm text-muted-foreground">{fetchError}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/containers")}>
+            Back to containers
+          </Button>
+          <Button size="sm" onClick={fetchContainer}>
+            <IconRefresh className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }

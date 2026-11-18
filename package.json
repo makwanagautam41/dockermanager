@@ -24,7 +24,8 @@
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "clean": "rm -rf dist client/dist client/.output"
+    "clean": "rm -rf dist client/dist client/.output",
+    "update-local": "sudo cp -r client/dist/* /usr/share/nginx/dockermanager/"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

@@ -64,7 +64,27 @@ import type { EnvVar, YamlFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as yaml from "js-yaml";
 
+async function copyForExplorer(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {}
+  }
 
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  const activeElement = document.activeElement as HTMLElement | null;
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  activeElement?.focus();
+  if (!copied) throw new Error("Clipboard copy is not available");
+}
 
 type DirHandle = {
   name: string;
@@ -336,6 +356,7 @@ export default function YamlPage() {
                   value={selected.content}
                   filename={selected.name}
                   onSave={(v) => updateYamlFile(current.id, selected.id, v)}
+                  onCopy={copyForExplorer}
                 />
               </TabsContent>
               <TabsContent value="env" className="mt-0">
@@ -748,8 +769,12 @@ function EnvEditor({ file, onChange }: { file: YamlFile; onChange: (env: EnvVar[
 
   const copyDotEnv = async () => {
     const txt = env.map((e) => `${e.key}=${e.value}`).join("\n");
-    await navigator.clipboard.writeText(txt);
-    toast.success(".env copied");
+    try {
+      await copyForExplorer(txt);
+      toast.success(".env copied");
+    } catch {
+      toast.error("Clipboard not available");
+    }
   };
 
   return (
