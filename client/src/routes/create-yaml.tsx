@@ -33,6 +33,44 @@ const DEFAULT_YAML = `services:
     restart: unless-stopped
 `;
 
+/**
+ * Compose uses the compose file's folder as the project name, which prefixes
+ * volumes and networks. Name the folder after the container/service so users
+ * get `floci_floci-data` instead of `create-from-yaml_floci-data`.
+ */
+function deriveProjectName(doc: any): string {
+  const sanitize = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^[^a-z0-9]+/, "")
+      .replace(/[^a-z0-9]+$/, "");
+
+  if (typeof doc?.name === "string" && doc.name.trim()) {
+    const named = sanitize(doc.name);
+    if (named) return named;
+  }
+
+  const services = doc?.services;
+  if (services && typeof services === "object" && !Array.isArray(services)) {
+    for (const service of Object.values(services) as any[]) {
+      const containerName = service?.container_name;
+      if (typeof containerName === "string" && containerName.trim()) {
+        const named = sanitize(containerName);
+        if (named) return named;
+      }
+    }
+    const firstService = Object.keys(services)[0];
+    if (firstService) {
+      const named = sanitize(firstService);
+      if (named) return named;
+    }
+  }
+
+  return "stack";
+}
+
 export default function CreateYamlPage() {
   const [yaml, setYaml] = useState(DEFAULT_YAML);
   const [originalYaml, setOriginalYaml] = useState(DEFAULT_YAML);
@@ -109,11 +147,13 @@ export default function CreateYamlPage() {
       return;
     }
     try {
-      const folder = "create-from-yaml";
-      const yamlPath = `docker-yaml-files/${folder}/docker-compose.yml`;
-      api.composeUpFromYaml(yamlPath, yaml).then(() => {
-        toast.success("Stack deployed from YAML");
+      const projectName = deriveProjectName(doc);
+      const yamlPath = `docker-yaml-files/${projectName}/docker-compose.yml`;
+      api.composeUpFromYaml(yamlPath, yaml, undefined, projectName).then(() => {
+        toast.success(`Stack "${projectName}" deployed from YAML`);
         navigate("/containers");
+      }).catch((e: any) => {
+        toast.error(e.message ?? "Deploy failed");
       });
     } catch (e: any) {
       toast.error(e.message ?? "Deploy failed");

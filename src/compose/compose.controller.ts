@@ -16,6 +16,7 @@ export class ComposeController {
       yamlPath: string;
       yamlContent: string;
       workspaceId?: string;
+      projectName?: string;
     },
   ) {
     return this.service.upFromYaml(data);

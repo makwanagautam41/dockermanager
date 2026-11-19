@@ -29,18 +29,57 @@ function resolveWorkspacePath(p: string): string {
   return resolved;
 }
 
+/**
+ * Compose derives the project name from the compose file's directory, which
+ * prefixes every named volume/network (e.g. `create-from-yaml_data`). Derive a
+ * stable project name from the stack itself so resources are named after the
+ * container/service instead of the generic workspace folder.
+ */
+function sanitizeProjectName(value: string): string {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^[^a-z0-9]+/, '')
+      .replace(/[^a-z0-9]+$/, '') || 'stack'
+  );
+}
+
+function deriveProjectName(doc: any, fallbackDir: string): string {
+  if (doc && typeof doc.name === 'string' && doc.name.trim()) {
+    return sanitizeProjectName(doc.name);
+  }
+
+  const services = doc?.services;
+  if (services && typeof services === 'object' && !Array.isArray(services)) {
+    for (const service of Object.values(services) as any[]) {
+      const containerName = service?.container_name;
+      if (typeof containerName === 'string' && containerName.trim()) {
+        return sanitizeProjectName(containerName);
+      }
+    }
+    const firstService = Object.keys(services)[0];
+    if (firstService) return sanitizeProjectName(firstService);
+  }
+
+  return sanitizeProjectName(path.basename(fallbackDir) || 'stack');
+}
+
 @Injectable()
 export class ComposeService {
   async upFromYaml(data: {
     yamlPath: string;
     yamlContent: string;
     workspaceId?: string;
+    projectName?: string;
   }) {
     if (!data.yamlPath || !data.yamlContent) {
       throw new BadRequestException('yamlPath and yamlContent are required');
     }
+    let doc: any;
     try {
-      yaml.load(data.yamlContent);
+      doc = yaml.load(data.yamlContent);
     } catch (e: any) {
       throw new BadRequestException(`Invalid YAML: ${e.message}`);
     }
@@ -52,11 +91,14 @@ export class ComposeService {
     }
     fs.writeFileSync(yamlPath, data.yamlContent, 'utf-8');
 
-    const result = await this.execCompose(dir, yamlPath, 'up', ['-d']);
+    const projectName = data.projectName?.trim()
+      ? sanitizeProjectName(data.projectName)
+      : deriveProjectName(doc, dir);
+
+    const result = await this.execCompose(dir, yamlPath, 'up', ['-d'], projectName);
 
     let containerId = '';
     try {
-      const projectName = path.basename(dir).toLowerCase();
       const containers = await docker.listContainers({ all: true });
       const match = containers.find((c) => {
         const proj = c.Labels?.['com.docker.compose.project'] ?? '';
@@ -67,6 +109,7 @@ export class ComposeService {
 
     return {
       message: 'Stack spun up from YAML',
+      projectName,
       containerId,
       ...result,
     };
@@ -77,13 +120,13 @@ export class ComposeService {
     composeFile: string,
     cmd: string,
     args: string[] = [],
+    projectName?: string,
   ): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      const child = spawn(
-        'docker',
-        ['compose', '-f', composeFile, cmd, ...args],
-        { cwd },
-      );
+      const composeArgs = ['compose'];
+      if (projectName) composeArgs.push('-p', projectName);
+      composeArgs.push('-f', composeFile, cmd, ...args);
+      const child = spawn('docker', composeArgs, { cwd });
       let stdout = '';
       let stderr = '';
       child.stdout?.on('data', (d: Buffer) => {
