@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   IconLoader2 as Loader2,
@@ -237,7 +237,15 @@ export default function ContainersPage() {
   const runningCount = containers.filter((c) => c.status === "running").length;
 
   const handleContainerClick = (c: DockerContainer) => {
-    navigate(`/containers/${c.id}`);
+    if (!c.id) {
+      toast.error("Container ID is missing");
+      return;
+    }
+    navigate(`/containers/${encodeURIComponent(c.id)}`);
+  };
+
+  const requestRemoveContainer = (c: DockerContainer) => {
+    setRemoveFor(c);
   };
 
   const runAction = async (c: DockerContainer, action: "start" | "stop" | "restart") => {
@@ -571,7 +579,7 @@ export default function ContainersPage() {
           <ContainerTable
             containers={sorted}
             runAction={runAction}
-            removeContainer={removeContainer}
+            removeContainer={requestRemoveContainer}
             setLogsForContainer={setLogsForContainer}
             toggleSelect={toggleSelect}
             selectAll={selectAll}
@@ -585,7 +593,7 @@ export default function ContainersPage() {
           <ContainerCards
             containers={sorted}
             runAction={runAction}
-            removeContainer={removeContainer}
+            removeContainer={requestRemoveContainer}
             setLogsForContainer={setLogsForContainer}
             toggleSelect={toggleSelect}
             selectAll={selectAll}
@@ -727,9 +735,19 @@ function ContainerTable({
             return (
               <TableRow key={c.id} className="cursor-pointer hover:bg-accent transition-colors" onClick={() => onContainerClick(c)}>
                 <TableCell className="w-10">
-                  <Checkbox checked={sel} onCheckedChange={() => toggleSelect(c.id)} />
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <Checkbox checked={sel} onCheckedChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
+                  </div>
                 </TableCell>
-                <TableCell className="font-medium font-mono text-sm">{c.name}</TableCell>
+                <TableCell className="font-medium font-mono text-sm">
+                  <Link
+                    to={`/containers/${encodeURIComponent(c.id)}`}
+                    className="hover:text-primary hover:underline underline-offset-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {c.name}
+                  </Link>
+                </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground max-w-[160px] truncate">{c.image}</TableCell>
                 <TableCell>
                   <Badge variant="secondary" className={`${categoryColor(c.category)}`}>
@@ -821,7 +839,9 @@ function ContainerCards({
       {containers.map((c) => (
         <Card key={c.id} className="p-3 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => onContainerClick(c)}>
           <div className="flex items-center justify-between mb-2">
-            <Checkbox checked={isSelected(c.id)} onCheckedChange={() => toggleSelect(c.id)} />
+            <div onClick={(e) => e.stopPropagation()}>
+              <Checkbox checked={isSelected(c.id)} onCheckedChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
+            </div>
             <div className="flex gap-1">
               <Button size="icon" variant="ghost" disabled={!dockerAvailable} onClick={(e) => { e.stopPropagation(); runAction(c, c.status === "running" ? "stop" : "start"); }} title={c.status === "running" ? "Stop" : "Start"}>
                 {c.status === "running" ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
