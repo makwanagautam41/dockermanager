@@ -19,6 +19,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { LogsViewer } from "@/components/logs-viewer";
 import { api } from "@/lib/api";
 import { useHealth } from "@/lib/health";
 import { cn } from "@/lib/utils";
@@ -32,26 +40,32 @@ export default function ContainerDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [fetchError, setFetchError] = useState("");
+  const [logsOpen, setLogsOpen] = useState(false);
 
-  const fetchContainer = async () => {
+  const fetchContainer = async (silent = false) => {
     if (!containerId) return;
-    setLoading(true);
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     setFetchError("");
     try {
       const data = await api.inspectContainer(containerId);
       setContainer(data);
     } catch (e: any) {
       const message = e?.message || "Failed to load container";
-      setFetchError(message);
-      toast.error(`Failed to load container: ${message}`);
+      if (!silent) {
+        setFetchError(message);
+        toast.error(`Failed to load container: ${message}`);
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
+    setContainer(null);
     fetchContainer();
-    const t = setInterval(fetchContainer, 10000);
+    const t = setInterval(() => fetchContainer(true), 10000);
     return () => clearInterval(t);
   }, [containerId]);
 
@@ -63,7 +77,7 @@ export default function ContainerDetailPage() {
       else if (action === "stop") await api.stopContainer(containerId);
       else await api.restartContainer(containerId);
       toast.success(`Container ${action}ed`);
-      await fetchContainer();
+      await fetchContainer(true);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -149,14 +163,14 @@ export default function ContainerDetailPage() {
   }, [mounts]);
 
   if (!containerId) return null;
-  if (loading) {
+  if (loading && !container) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-[320px] items-center justify-center bg-background">
         <IconLoader2 className="h-6 w-6 animate-spin" />
       </div>
     );
   }
-  if (fetchError) {
+  if (fetchError && !container) {
     return (
       <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
         <p className="text-sm text-muted-foreground">{fetchError}</p>
@@ -164,7 +178,7 @@ export default function ContainerDetailPage() {
           <Button variant="outline" size="sm" onClick={() => navigate("/containers")}>
             Back to containers
           </Button>
-          <Button size="sm" onClick={fetchContainer}>
+          <Button size="sm" onClick={() => fetchContainer()}>
             <IconRefresh className="mr-2 h-4 w-4" />
             Retry
           </Button>
@@ -189,7 +203,7 @@ export default function ContainerDetailPage() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={fetchContainer} disabled={refreshing}>
+          <Button size="sm" variant="outline" onClick={() => fetchContainer()} disabled={refreshing}>
             <IconRefresh className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -221,7 +235,7 @@ export default function ContainerDetailPage() {
           <IconTrash className="mr-2 h-4 w-4" />
           Remove
         </Button>
-        <Button size="icon" variant="ghost" onClick={() => navigate(`/containers/${containerId}/logs`)}>
+        <Button size="icon" variant="ghost" onClick={() => setLogsOpen(true)} title="Logs" aria-label="View container logs">
           <IconTerminal className="h-4 w-4" />
         </Button>
       </div>
@@ -385,12 +399,23 @@ export default function ContainerDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Logs sheet: the button after Remove used to navigate to a missing route */}
+      <Sheet open={logsOpen} onOpenChange={setLogsOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle className="font-mono">Logs · {name}</SheetTitle>
+            <SheetDescription>Live container logs</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            {logsOpen && containerId && (
+              <LogsViewer name={name} containerId={containerId} />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
-}
-
-function RefreshIcon({ className }: { className?: string }) {
-  return <IconRefresh className={className} />;
 }
 
 function DockerStatusBadge({ docker }: { docker: ReturnType<typeof useHealth> }) {
