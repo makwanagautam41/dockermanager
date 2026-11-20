@@ -56,7 +56,8 @@ export class FilesystemService {
       : resolvedBase;
     this.ensureExists(target);
     const entries = fs.readdirSync(target, { withFileTypes: true });
-    return entries.map((e) => {
+    // Include .env files explicitly
+    const result: any[] = entries.map((e) => {
       const full = path.join(target, e.name);
       const stat = fs.statSync(full);
       return {
@@ -66,7 +67,28 @@ export class FilesystemService {
         modifiedAt: stat.mtime,
       };
     });
+    // Check for .env file and add it if present
+    const envPath = path.join(target, '.env');
+    try {
+      if (fs.existsSync(envPath)) {
+        const envStat = fs.statSync(envPath);
+        result.push({
+          name: '.env',
+          type: 'file',
+          size: envStat.size,
+          modifiedAt: envStat.mtime,
+          isEnv: true,
+        });
+      }
+    } catch {}
+    return result;
   }
+
+  interface EnvFileEntry {
+  name: string;
+  path: string;
+  content: string;
+}
 
   getTree(basePath: string, subPath?: string) {
     const resolvedBase = this.resolveBase(basePath);
@@ -88,6 +110,7 @@ export class FilesystemService {
         name: name,
         isDir: isDir,
         content: '',
+        env: undefined,
       };
 
       if (isDir) {
@@ -95,6 +118,34 @@ export class FilesystemService {
         node.children = entries
           .filter((e) => e.name !== '.git' && e.name !== 'node_modules')
           .map((e) => buildTree(path.join(currentPath, e.name)));
+        // Check for .env file in directories
+        const envPath = path.join(currentPath, '.env');
+        if (fs.existsSync(envPath)) {
+          try {
+            const envContent = fs.readFileSync(envPath, 'utf-8');
+            node.env = envContent
+              .split("\n")
+              .filter((l: string) => l.trim() && !l.startsWith("#"))
+              .map((l: string) => {
+                const eqIdx = l.indexOf("=");
+                if (eqIdx === -1) return { key: l.trim(), value: "" };
+                return {
+                  key: l.slice(0, eqIdx).trim(),
+                  value: l.slice(eqIdx + 1).trim(),
+                  secret: /pass|secret|token|key|password/i.test(l.slice(0, eqIdx)),
+                };
+              });
+          } catch {}
+        }
+        // Add env file entry at root level
+        const rootEnvPath = path.join(this.rootPath(), '.env');
+        if (currentPath === rootEnvPath) {
+          node.envFile = {
+            name: '.env',
+            path: rootEnvPath,
+            content: envContent,
+          };
+        }
       } else {
         try {
           node.content = fs.readFileSync(currentPath, 'utf-8');
@@ -105,7 +156,21 @@ export class FilesystemService {
       return node;
     };
 
-    return buildTree(target);
+    const tree = buildTree(target);
+
+    // Collect all .env files in the tree
+    const envFiles: EnvFileEntry[] = [];
+    const collectEnvFiles = (node: any) => {
+      if (node.isDir) {
+        if (node.envFile) {
+          envFiles.push(node.envFile);
+        }
+        node.children?.forEach(collectEnvFiles);
+      }
+    };
+    collectEnvFiles(tree);
+
+    return { tree, envFiles };
   }
 
   readFile(filePath: string) {

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query } from '@nestjs/common';
+import { Controller, Post, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { FilesystemService } from './filesystem.service';
 import {
@@ -10,6 +10,12 @@ import {
   DeleteNodeDto,
   DuplicateFileDto,
 } from './dto';
+
+interface EnvFileEntry {
+  name: string;
+  path: string;
+  content: string;
+}
 
 @ApiTags('Filesystem')
 @ApiBearerAuth()
@@ -24,7 +30,7 @@ export class FilesystemController {
   }
 
   @Post('tree')
-  @ApiOperation({ summary: 'Get full recursive file tree' })
+  @ApiOperation({ summary: 'Get full recursive file tree with .env files' })
   getTree(@Body() dto: BrowseFolderDto) {
     return this.service.getTree(dto.basePath, dto.subPath);
   }
