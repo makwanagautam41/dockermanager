@@ -131,10 +131,26 @@ const isBackendLike = (image: string, name: string) => {
   return /backend|api|server|app|web/.test(i) || /backend|api|server|app/.test(n);
 };
 
+// Cache for analysis results keyed by YAML content hash
+const analysisCache = new Map<string, { result: AnalyzeResult; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCacheKey(yaml: string): string {
+  // Simple hash based on first 2000 chars to avoid memory issues
+  return yaml.substring(0, 2000);
+}
+
 export function analyzeYaml(
   text: string,
   liveContainers: DockerContainer[] = [],
 ): AnalyzeResult {
+  // Check cache first
+  const cacheKey = getCacheKey(text);
+  const cached = analysisCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.result;
+  }
+
   const findings: Finding[] = [];
   const summary: YamlSummary = { services: [], networks: [], volumes: [] };
 
@@ -229,17 +245,38 @@ export function analyzeYaml(
       privileged: Boolean(s.privileged === true),
     };
 
-    // Unknown service keys
+    // Unknown service keys - be more lenient, only flag truly unknown keys
+    const unknownKeys: string[] = [];
     for (const k of Object.keys(s)) {
       if (!SERVICE_KEYS.has(k)) {
-        findings.push({
-          severity: "error",
-          code: "unknown-key",
-          message: `Unknown key "${k}" in service "${name}".`,
-          line: lineOf(text, k, serviceBaseLine - 1) || serviceBaseLine,
-          service: name,
-          suggestedFix: `Remove "${k}" or check the Compose spec spelling.`,
-        });
+        // Check if it's a common docker-compose key that might be valid
+        const lower = k.toLowerCase();
+        if (
+          !/^(after_start|startup_|shm_size|ulimit|security_opt|network_mode|ipc_mode|pid_mode|uts_mode|cgroupns_mode|group_add)$/i.test(
+            lower,
+          )
+        ) {
+          unknownKeys.push(k);
+        }
+      }
+    }
+
+    if (unknownKeys.length > 0) {
+      // Only show error for truly unknown keys, not minor ones
+      const trulyUnknown = unknownKeys.filter(
+        (k) => !/^( EnvironmentFile|env_file|tmpfile|volumes_from|volumes_from|extends|x-)/i.test(k),
+      );
+      if (trulyUnknown.length > 0) {
+        for (const k of trulyUnknown) {
+          findings.push({
+            severity: "error",
+            code: "unknown-key",
+            message: `Unknown key "${k}" in service "${name}".`,
+            line: lineOf(text, k, serviceBaseLine - 1) || serviceBaseLine,
+            service: name,
+            suggestedFix: `Remove "${k}" or check the Compose spec spelling.`,
+          });
+        }
       }
     }
 
@@ -577,11 +614,17 @@ export function analyzeYaml(
       suggestedFix: "Add `name: <your-stack>` at the top level.",
     });
   }
-  if (summary.services.some((s) => !s.environment.length)) {
-    // tip: consider .env
+  // Tip: consider .env only if there are services without environment but with env_file
+  if (summary.services.some((s) => !s.environment.length && s.environment.length === 0)) {
+    // already handled below
   }
 
-  return { doc, parseError, findings, summary, counts: tally(findings) };
+  const result = { doc, parseError, findings, summary, counts: tally(findings) };
+
+  // Cache the result
+  analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+
+  return result;
 }
 
 function volumeToString(v: any): string {
