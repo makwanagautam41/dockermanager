@@ -33,11 +33,6 @@ const DEFAULT_YAML = `services:
     restart: unless-stopped
 `;
 
-/**
- * Compose uses the compose file's folder as the project name, which prefixes
- * volumes and networks. Name the folder after the container/service so users
- * get `floci_floci-data` instead of `create-from-yaml_floci-data`.
- */
 function deriveProjectName(doc: any): string {
   const sanitize = (value: string) =>
     value
@@ -109,7 +104,8 @@ export default function CreateYamlPage() {
     [analysis],
   );
 
-  const canDeploy = counts.error === 0 && Boolean(doc);
+  // Hard deploy: allow deployment even with errors
+  const canHardDeploy = useMemo(() => analysis !== null, [analysis]);
 
   const scrollToLine = useCallback(
     (line: number) => {
@@ -121,23 +117,24 @@ export default function CreateYamlPage() {
       el.setSelectionRange(offset, offset);
       el.focus();
       el.scrollTop = el.scrollHeight * (line / Math.max(1, lines.length));
+      // Add highlighting by briefly adding a CSS class
+      el.classList.add("line-highlight");
+      setTimeout(() => el.classList.remove("line-highlight"), 1500);
     },
     [],
   );
 
   const handleDeploy = () => {
-    if (!canDeploy) {
-      toast.error("Fix the errors before deploying.");
+    if (counts.error === 0 && Boolean(doc)) {
+      // No errors, normal deploy
+      doDeploy();
       return;
     }
-    if (counts.warning > 0) {
-      setDeployConfirm({
-        message: `You have ${counts.warning} warning(s). Deploy anyway?`,
-        onConfirm: () => doDeploy(),
-      });
-      return;
-    }
-    doDeploy();
+    // Hard deploy: allow even with errors
+    setDeployConfirm({
+      message: counts.error > 0 ? `You have ${counts.error} error(s). Deploy anyway?` : `${counts.warning} warning(s). Deploy anyway?`,
+      onConfirm: () => doDeploy(),
+    });
   };
 
   const doDeploy = () => {
@@ -183,10 +180,11 @@ export default function CreateYamlPage() {
         <div className="flex items-end gap-2">
           <Button
             onClick={handleDeploy}
-            disabled={!canDeploy}
+            disabled={!canHardDeploy}
             className="ml-2"
+            variant={counts.error > 0 ? "destructive" : "primary"}
           >
-            {canDeploy ? "Deploy" : "Fix errors first"}
+            {counts.error > 0 ? "Hard Deploy" : "Deploy"}
           </Button>
         </div>
       </div>
@@ -207,7 +205,7 @@ export default function CreateYamlPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      )}
+      })
 
       {/* Analysis summary */}
       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
@@ -215,8 +213,8 @@ export default function CreateYamlPage() {
           <span className={cn("h-2 w-2 rounded-full", counts.error ? "bg-red-500" : counts.warning ? "bg-amber-500" : "bg-emerald-500")} />
           {counts.error} error · {counts.warning} warning · {counts.tip} tip
         </span>
-        {!canDeploy && counts.error > 0 && (
-          <span className="text-destructive font-medium">Deploy blocked until errors are fixed</span>
+        {counts.error > 0 && (
+          <span className="text-destructive font-medium">Errors present - use "Hard Deploy" to override</span>
         )}
       </div>
 
