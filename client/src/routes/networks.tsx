@@ -8,8 +8,8 @@ import {
   IconSearch,
   IconShieldOff,
   IconLink,
-  IconActivity,
   IconUsers,
+  IconInfo,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,6 +46,33 @@ interface NetworkRow {
   composeProject?: string;
 }
 
+interface NetworkDetail {
+  id: string;
+  name: string;
+  description: string;
+  driver: string;
+  scope: string;
+  ipam: {
+    subnet: string;
+    gateway: string;
+    iprange: string;
+  };
+  internal: boolean;
+  attachable: boolean;
+  ingress: boolean;
+  immutable: boolean;
+  driverOpts: Record<string, string>;
+  containers: NetworkContainer[];
+}
+
+interface NetworkContainer {
+  containerId: string;
+  name: string;
+  endpointAddr: string;
+  ipv4Address: string;
+  ipv6Address: string;
+}
+
 export default function NetworksPage() {
   const docker = useHealth("dockerEngine");
   const [networks, setNetworks] = useState<NetworkRow[]>([]);
@@ -56,7 +83,7 @@ export default function NetworksPage() {
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [connectNetwork, setConnectNetwork] = useState<NetworkRow | null>(null);
-  const [connectContainer, setConnectContainer] = useState<string | null>(null);
+  const [connectContainer, setConnectContainer] = useState<NetworkRow | null>(null);
   const [disconnectNetwork, setDisconnectNetwork] = useState<NetworkRow | null>(null);
   const [disconnectContainer, setDisconnectContainer] = useState<string | null>(null);
 
@@ -123,8 +150,8 @@ export default function NetworksPage() {
   const doConnect = async () => {
     if (!connectNetwork || !connectContainer) return;
     try {
-      await api.connectContainerToNetwork(connectNetwork.id, connectContainer);
-      toast.success(`Connected ${connectContainer} to ${connectNetwork.name}`);
+      await api.connectContainerToNetwork(connectNetwork.id, connectContainer.id);
+      toast.success(`Connected ${connectContainer.name} to ${connectNetwork.name}`);
       setConnectNetwork(null);
       setConnectContainer(null);
       await fetchNetworks(true);
@@ -168,7 +195,7 @@ export default function NetworksPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => fetchNetworks(true)} disabled={refreshing}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            <IconRefresh className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
           </Button>
         </div>
@@ -205,7 +232,7 @@ export default function NetworksPage() {
         <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <IconLoader2 className="h-5 w-5 animate-spin" />
               <span className="text-sm">Loading networks…</span>
             </div>
           ) : filtered.length === 0 ? (
@@ -227,7 +254,11 @@ export default function NetworksPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((n) => (
-                  <TableRow key={n.id} className="cursor-pointer hover:bg-accent transition-colors" onClick={() => setSelectedNetwork(n)}>
+                  <TableRow
+                    key={n.id}
+                    className="cursor-pointer hover:bg-accent transition-colors"
+                    onClick={() => setSelectedNetwork(n)}
+                  >
                     <TableCell className="font-medium font-mono text-sm">{n.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{n.driver}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{n.scope}</TableCell>
@@ -239,7 +270,10 @@ export default function NetworksPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setSelectedNetwork(n); }}>
+                      <Button size="icon" variant="ghost" onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedNetwork(n);
+                      }}>
                         <IconLink className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -277,7 +311,10 @@ export default function NetworksPage() {
       </div>
 
       {/* Network detail dialog */}
-      <Dialog open={detailOpen && !!selectedNetwork} onOpenChange={(o) => { setDetailOpen(o); if (!o) setSelectedNetwork(null); }}>
+      <Dialog open={detailOpen && !!selectedNetwork} onOpenChange={(o) => {
+        setDetailOpen(o);
+        if (!o) setSelectedNetwork(null);
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -301,8 +338,8 @@ export default function NetworksPage() {
               <span className="font-medium">Connect a container</span>
               <div className="flex gap-2">
                 <Select
-                  value={connectContainer || ""}
-                  onValueChange={setConnectContainer}
+                  value={connectContainer ? connectContainer.id : ""}
+                  onValueChange={(val) => setConnectContainer(containers.find(c => c.id === val) || null)}
                   disabled={!connectNetwork || !docker.available}
                 >
                   <SelectTrigger className="w-48">
@@ -332,7 +369,12 @@ export default function NetworksPage() {
       </Dialog>
 
       {/* Connect dialog (triggered from table) */}
-      <Dialog open={!!connectNetwork} onOpenChange={(o) => { if (!o) { setConnectNetwork(null); setConnectContainer(null); } }}>
+      <Dialog open={!!connectNetwork} onOpenChange={(o) => { 
+        if (!o) { 
+          setConnectNetwork(null); 
+          setConnectContainer(null); 
+        } 
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Connect container to {connectNetwork?.name}</DialogTitle>
@@ -364,7 +406,12 @@ export default function NetworksPage() {
       </Dialog>
 
       {/* Disconnect dialog */}
-      <AlertDialog open={!!disconnectNetwork} onOpenChange={(o) => { if (!o) { setDisconnectNetwork(null); setDisconnectContainer(null); } }}>
+      <AlertDialog open={!!disconnectNetwork} onOpenChange={(o) => { 
+        if (!o) { 
+          setDisconnectNetwork(null); 
+          setDisconnectContainer(null); 
+        } 
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect container from {disconnectNetwork?.name}</AlertDialogTitle>
