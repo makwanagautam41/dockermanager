@@ -184,9 +184,16 @@ export const api = {
 
   // ---- Filesystem ----
   async getFileTree(basePath: string, subPath?: string) {
-    return request<YamlFile>("/filesystem/tree", {
+    return request<{ tree: YamlFile; envFiles: EnvFileEntry[] }>("/filesystem/tree", {
       method: "POST",
       body: JSON.stringify({ basePath, subPath }),
+    });
+  },
+
+  async getEnvFile(basePath: string) {
+    return request<{ content: string; name: string }>("/filesystem/env", {
+      method: "POST",
+      body: JSON.stringify({ basePath }),
     });
   },
 
