@@ -209,15 +209,45 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     loadWorkspaces();
   }, [loadWorkspaces]);
 
-  const loadTree = useCallback(async () => {
+  interface EnvFileEntry {
+  name: string;
+  path: string;
+  content: string;
+}
+
+const loadTree = useCallback(async () => {
     if (!currentId) return;
     const ws = workspaces.find((w) => w.id === currentId);
     if (!ws || !ws.rootFolder) {
       setTreeByWs((prev) => ({ ...prev, [currentId]: null }));
       return;
     }
-    const tree = await api.getFileTree(ws.rootFolder).catch(() => null);
-    setTreeByWs((prev) => ({ ...prev, [currentId]: tree }));
+    const { tree, envFiles } = await api.getFileTree(ws.rootFolder).catch(() => ({ tree: null, envFiles: [] }));
+    // Merge env file content into the tree nodes
+    const mergeEnvIntoTree = (node: any): any => {
+      if (!node) return node;
+      const envFile = envFiles.find((ef) => ef.path === node.path);
+      if (envFile && envFile.content) {
+        node.env = envFile.content
+          .split("\n")
+          .filter((l: string) => l.trim() && !l.startsWith("#"))
+          .map((l: string) => {
+            const eqIdx = l.indexOf("=");
+            if (eqIdx === -1) return { key: l.trim(), value: "" };
+            return {
+              key: l.slice(0, eqIdx).trim(),
+              value: l.slice(eqIdx + 1).trim(),
+              secret: /pass|secret|token|key|password/i.test(l.slice(0, eqIdx)),
+            };
+          });
+      }
+      if (node.children) {
+        node.children = node.children.map(mergeEnvIntoTree);
+      }
+      return node;
+    };
+    const processedTree = tree ? mergeEnvIntoTree(tree) : null;
+    setTreeByWs((prev) => ({ ...prev, [currentId]: processedTree }));
   }, [currentId, workspaces]);
 
   useEffect(() => {
