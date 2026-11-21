@@ -127,7 +127,6 @@ export default function YamlPage() {
     isDir: boolean;
   } | null>(null);
   const [createValue, setCreateValue] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
   const [backups, setBackups] = useState<any[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -541,34 +540,41 @@ export default function YamlPage() {
         value={renameValue}
         onValue={setRenameValue}
         onClose={() => setRenameFor(null)}
-        onConfirm={async () => {
+        onConfirm={() => {
           if (renameFor && renameValue.trim()) {
+            const targetNode = renameFor;
             const trimmed = renameValue.trim();
+            // Instantly dismiss dialog to avoid blocking UI
+            setRenameFor(null);
+            setRenameValue('');
             const toastId = toast.loading(`Renaming to "${trimmed}"…`);
-            try {
-              await renameYamlNode(current.id, renameFor.id, trimmed);
-              toast.success(`Renamed to ${trimmed}`, { id: toastId });
-              setRenameFor(null);
-            } catch (err: any) {
-              toast.error(err?.message || 'Failed to rename', { id: toastId });
-            }
+            renameYamlNode(current.id, targetNode.id, trimmed)
+              .then(() => {
+                toast.success(`Renamed to ${trimmed}`, { id: toastId });
+              })
+              .catch((err: any) => {
+                toast.error(err?.message || 'Failed to rename', { id: toastId });
+              });
           }
         }}
       />
       <DeleteDialog
         node={deleteFor}
         onClose={() => setDeleteFor(null)}
-        onConfirm={async () => {
+        onConfirm={() => {
           if (deleteFor) {
-            const toastId = toast.loading(`Deleting "${deleteFor.name}"…`);
-            try {
-              if (selectedId === deleteFor.id) setSelectedId(null);
-              await deleteYamlNode(current.id, deleteFor.id);
-              toast.success(`Deleted ${deleteFor.name}`, { id: toastId });
-              setDeleteFor(null);
-            } catch (err: any) {
-              toast.error(err?.message || 'Failed to delete', { id: toastId });
-            }
+            const targetNode = deleteFor;
+            // Instantly dismiss dialog to avoid blocking UI
+            setDeleteFor(null);
+            if (selectedId === targetNode.id) setSelectedId(null);
+            const toastId = toast.loading(`Deleting "${targetNode.name}"…`);
+            deleteYamlNode(current.id, targetNode.id)
+              .then(() => {
+                toast.success(`Deleted ${targetNode.name}`, { id: toastId });
+              })
+              .catch((err: any) => {
+                toast.error(err?.message || 'Failed to delete', { id: toastId });
+              });
           }
         }}
       />
@@ -576,34 +582,28 @@ export default function YamlPage() {
         state={createFor}
         value={createValue}
         onValue={setCreateValue}
-        onClose={() => {
-          if (!isCreating) setCreateFor(null);
-        }}
-        onConfirm={async () => {
-          if (createFor && createValue.trim() && !isCreating) {
+        onClose={() => setCreateFor(null)}
+        onConfirm={() => {
+          if (createFor && createValue.trim()) {
+            const targetParent = createFor.parent;
+            const isDir = createFor.isDir;
             const trimmed = createValue.trim();
+            // Instantly dismiss dialog to avoid blocking UI
+            setCreateFor(null);
+            setCreateValue('');
             const toastId = toast.loading(
-              `Creating ${createFor.isDir ? 'folder' : 'file'} "${trimmed}"…`,
+              `Creating ${isDir ? 'folder' : 'file'} "${trimmed}"…`,
             );
-            setIsCreating(true);
-            try {
-              const id = await createYamlChild(
-                current.id,
-                createFor.parent.id,
-                trimmed,
-                createFor.isDir,
-              );
-              if (id && !createFor.isDir) setSelectedId(id);
-              toast.success(`Created ${trimmed}`, { id: toastId });
-              setCreateFor(null);
-            } catch (err: any) {
-              toast.error(err?.message || 'Failed to create', { id: toastId });
-            } finally {
-              setIsCreating(false);
-            }
+            createYamlChild(current.id, targetParent.id, trimmed, isDir)
+              .then((id) => {
+                if (id && !isDir) setSelectedId(id);
+                toast.success(`Created ${trimmed}`, { id: toastId });
+              })
+              .catch((err: any) => {
+                toast.error(err?.message || 'Failed to create', { id: toastId });
+              });
           }
         }}
-        loading={isCreating}
       />
 
       <Dialog
@@ -912,17 +912,15 @@ function CreateDialog({
   onValue,
   onClose,
   onConfirm,
-  loading = false,
 }: {
   state: { parent: YamlFile; isDir: boolean } | null;
   value: string;
   onValue: (v: string) => void;
   onClose: () => void;
   onConfirm: () => void;
-  loading?: boolean;
 }) {
   return (
-    <Dialog open={!!state} onOpenChange={(o) => !o && !loading && onClose()}>
+    <Dialog open={!!state} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono text-sm">
@@ -931,20 +929,23 @@ function CreateDialog({
         </DialogHeader>
         <Input
           autoFocus
-          disabled={loading}
           value={value}
           onChange={(e) => onValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !loading && onConfirm()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && value.trim()) {
+              e.preventDefault();
+              onConfirm();
+            }
+          }}
           className="font-mono text-sm"
           placeholder={state?.isDir ? 'folder-name' : 'filename.ext'}
         />
         <DialogFooter>
-          <Button variant="ghost" disabled={loading} onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={loading || !value.trim()} onClick={onConfirm} className="gap-1.5">
-            {loading && <IconRefresh className="h-3.5 w-3.5 animate-spin" />}
-            {loading ? 'Creating…' : 'Create'}
+          <Button disabled={!value.trim()} onClick={onConfirm}>
+            Create
           </Button>
         </DialogFooter>
       </DialogContent>
