@@ -185,6 +185,26 @@ export default function YamlPage() {
   };
   const selected = selectedId ? findFile(tree) : null;
 
+  // On-demand lazy load for file content if omitted from tree preview
+  useEffect(() => {
+    if (selected && !selected.isDir) {
+      if (
+        selected.content === '' ||
+        selected.content === 'File too large for tree preview (click to view)'
+      ) {
+        api
+          .readFile(selected.path)
+          .then((res) => {
+            if (res?.content !== undefined) {
+              selected.content = res.content;
+              setSelectedId((prev) => (prev ? `${prev}` : prev));
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [selected?.id, selected?.path]);
+
   const doImport = async () => {
     toast.error('Import feature has been removed from the explorer');
   };
