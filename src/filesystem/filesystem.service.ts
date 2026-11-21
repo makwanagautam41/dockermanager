@@ -84,11 +84,6 @@ export class FilesystemService {
     return result;
   }
 
-  interface EnvFileEntry {
-  name: string;
-  path: string;
-  content: string;
-}
 
   getTree(basePath: string, subPath?: string) {
     const resolvedBase = this.resolveBase(basePath);
@@ -113,6 +108,7 @@ export class FilesystemService {
         env: undefined,
       };
 
+      let envContent: string | undefined;
       if (isDir) {
         const entries = fs.readdirSync(currentPath, { withFileTypes: true });
         node.children = entries
@@ -259,4 +255,10 @@ export class FilesystemService {
       throw new BadRequestException(`Path does not exist: ${p}`);
     }
   }
+}
+
+export interface EnvFileEntry {
+  name: string;
+  path: string;
+  content: string;
 }

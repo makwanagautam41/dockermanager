@@ -209,13 +209,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     loadWorkspaces();
   }, [loadWorkspaces]);
 
-  interface EnvFileEntry {
-  name: string;
-  path: string;
-  content: string;
-}
-
-const loadTree = useCallback(async () => {
+  const loadTree = useCallback(async () => {
     if (!currentId) return;
     const ws = workspaces.find((w) => w.id === currentId);
     if (!ws || !ws.rootFolder) {

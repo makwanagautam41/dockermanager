@@ -9,7 +9,7 @@ import {
   IconShieldOff,
   IconLink,
   IconUsers,
-  IconInfo,
+  IconActivity,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -83,7 +83,7 @@ export default function NetworksPage() {
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [connectNetwork, setConnectNetwork] = useState<NetworkRow | null>(null);
-  const [connectContainer, setConnectContainer] = useState<NetworkRow | null>(null);
+  const [connectContainer, setConnectContainer] = useState<{ id: string; name: string } | null>(null);
   const [disconnectNetwork, setDisconnectNetwork] = useState<NetworkRow | null>(null);
   const [disconnectContainer, setDisconnectContainer] = useState<string | null>(null);
 
@@ -382,8 +382,10 @@ export default function NetworksPage() {
           </DialogHeader>
           <div className="p-4 space-y-4">
             <Select
-              value={connectContainer || ""}
-              onValueChange={setConnectContainer}
+              value={connectContainer?.id ?? ""}
+              onValueChange={(val) =>
+                setConnectContainer(containers.find((c) => c.id === val) ?? null)
+              }
               disabled={!docker.available}
             >
               <SelectTrigger className="w-full">

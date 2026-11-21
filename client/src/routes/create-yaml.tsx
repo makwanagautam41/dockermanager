@@ -182,7 +182,7 @@ export default function CreateYamlPage() {
             onClick={handleDeploy}
             disabled={!canHardDeploy}
             className="ml-2"
-            variant={counts.error > 0 ? "destructive" : "primary"}
+            variant={counts.error > 0 ? "destructive" : "default"}
           >
             {counts.error > 0 ? "Hard Deploy" : "Deploy"}
           </Button>
@@ -205,7 +205,7 @@ export default function CreateYamlPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      })
+      )}
 
       {/* Analysis summary */}
       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
