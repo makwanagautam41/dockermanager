@@ -85,35 +85,33 @@ export default function AppLayout() {
   return (
     <HealthStatusProvider>
       <SidebarProvider>
-        <div className="flex min-h-screen w-full">
-          <AppSidebar />
-          <SidebarInset className="flex min-w-0 flex-1 flex-col">
-            <TopBar />
-            {error && !dismissedError && (
-              <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-sm flex items-center gap-3">
-                <span className="text-red-600 dark:text-red-400 flex-1">
-                  {error}
-                </span>
-                <button
-                  onClick={() => refresh()}
-                  className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline shrink-0"
-                >
-                  Retry
-                </button>
-                <button
-                  onClick={() => setDismissedError(true)}
-                  className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-            <main className="flex min-w-0 flex-1 flex-col p-4 sm:p-6">
-              {loading && !current ? <FullPageLoader label="loading…" /> : <Outlet />}
-            </main>
-            <StatusBar />
-          </SidebarInset>
-        </div>
+        <AppSidebar />
+        <SidebarInset className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          {error && !dismissedError && (
+            <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-sm flex items-center gap-3">
+              <span className="text-red-600 dark:text-red-400 flex-1">
+                {error}
+              </span>
+              <button
+                onClick={() => refresh()}
+                className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline shrink-0"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setDismissedError(true)}
+                className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          <main className="flex min-w-0 flex-1 flex-col p-4 sm:p-6">
+            {loading && !current ? <FullPageLoader label="loading…" /> : <Outlet />}
+          </main>
+          <StatusBar />
+        </SidebarInset>
         <ShortcutsDialog />
       </SidebarProvider>
     </HealthStatusProvider>

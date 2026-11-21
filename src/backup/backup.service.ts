@@ -8,13 +8,30 @@ const DOCKERMANAGER_BACKUP_DIR =
   process.env.DOCKERMANAGER_BACKUP_DIR ||
   path.join(os.homedir(), '.dockermanager', 'backups');
 
+export interface BackupSnapshot {
+  name: string;
+  path: string;
+  createdAt: Date;
+  fileCount: number;
+  size: number;
+}
+
+interface BackupCache {
+  data: BackupSnapshot[];
+  mtime: number;
+  timestamp: number;
+}
+
 @Injectable()
 export class BackupService {
+  private cache: BackupCache | null = null;
+  private readonly CACHE_TTL_MS = 30000; // 30s in-memory cache
+
   constructor(private prisma: PrismaService) {}
 
-  private ensureBackupDir(): string {
+  private async ensureBackupDirAsync(): Promise<string> {
     const dir = path.join(DOCKERMANAGER_BACKUP_DIR, 'default');
-    fs.mkdirSync(dir, { recursive: true });
+    await fs.promises.mkdir(dir, { recursive: true });
     return dir;
   }
 
@@ -24,33 +41,31 @@ export class BackupService {
     );
   }
 
+  private invalidateCache() {
+    this.cache = null;
+  }
+
   async backupWorkspaceFiles() {
     const rootFolderPath = this.getRootFolderPath();
     if (!fs.existsSync(rootFolderPath)) {
-      fs.mkdirSync(rootFolderPath, { recursive: true });
+      await fs.promises.mkdir(rootFolderPath, { recursive: true });
     }
 
-    const backupDir = this.ensureBackupDir();
+    const backupDir = await this.ensureBackupDirAsync();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const snapshotDir = path.join(backupDir, `snapshot-${timestamp}`);
-    fs.mkdirSync(snapshotDir, { recursive: true });
+    await fs.promises.mkdir(snapshotDir, { recursive: true });
 
-    const copyRecursive = (src: string, dest: string) => {
-      const entries = fs.readdirSync(src, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name === '.git' || entry.name === 'node_modules') continue;
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-        if (entry.isDirectory()) {
-          fs.mkdirSync(destPath, { recursive: true });
-          copyRecursive(srcPath, destPath);
-        } else {
-          fs.copyFileSync(srcPath, destPath);
-        }
-      }
-    };
+    // Fast non-blocking async copy using Node fs.promises.cp
+    await fs.promises.cp(rootFolderPath, snapshotDir, {
+      recursive: true,
+      filter: (source) => {
+        const basename = path.basename(source);
+        return basename !== '.git' && basename !== 'node_modules';
+      },
+    });
 
-    copyRecursive(rootFolderPath, snapshotDir);
+    this.invalidateCache();
 
     await this.prisma.activity.create({
       data: {
@@ -61,66 +76,98 @@ export class BackupService {
       },
     });
 
+    const stats = await this.calculateDirStatsAsync(snapshotDir);
+
     return {
       message: 'Backup created',
       path: snapshotDir,
       timestamp,
-      files: this.countFiles(snapshotDir),
+      files: stats.count,
     };
   }
 
-  async listBackups() {
+  async listBackups(): Promise<BackupSnapshot[]> {
     const backupDir = path.join(DOCKERMANAGER_BACKUP_DIR, 'default');
-    if (!fs.existsSync(backupDir)) return [];
 
-    const entries = fs.readdirSync(backupDir, { withFileTypes: true });
-    const snapshots = entries
-      .filter((e) => e.isDirectory() && e.name.startsWith('snapshot-'))
-      .map((e) => {
-        const snapshotPath = path.join(backupDir, e.name);
-        const stat = fs.statSync(snapshotPath);
-        return {
-          name: e.name,
-          path: snapshotPath,
-          createdAt: stat.birthtime,
-          fileCount: this.countFiles(snapshotPath),
-          size: this.getDirSize(snapshotPath),
-        };
-      })
-      .sort(
+    let dirStat: fs.Stats;
+    try {
+      dirStat = await fs.promises.stat(backupDir);
+    } catch {
+      return [];
+    }
+
+    // Serve from in-memory cache if directory hasn't changed and within TTL
+    const now = Date.now();
+    if (
+      this.cache &&
+      this.cache.mtime === dirStat.mtimeMs &&
+      now - this.cache.timestamp < this.CACHE_TTL_MS
+    ) {
+      return this.cache.data;
+    }
+
+    try {
+      const entries = await fs.promises.readdir(backupDir, {
+        withFileTypes: true,
+      });
+      const snapshotDirs = entries.filter(
+        (e) => e.isDirectory() && e.name.startsWith('snapshot-'),
+      );
+
+      // Concurrent parallel inspection of all snapshots
+      const snapshots: BackupSnapshot[] = await Promise.all(
+        snapshotDirs.map(async (e) => {
+          const snapshotPath = path.join(backupDir, e.name);
+          const [stat, stats] = await Promise.all([
+            fs.promises.stat(snapshotPath),
+            this.calculateDirStatsAsync(snapshotPath),
+          ]);
+          return {
+            name: e.name,
+            path: snapshotPath,
+            createdAt: stat.birthtime,
+            fileCount: stats.count,
+            size: stats.size,
+          };
+        }),
+      );
+
+      snapshots.sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
 
-    return snapshots;
+      this.cache = {
+        data: snapshots,
+        mtime: dirStat.mtimeMs,
+        timestamp: now,
+      };
+
+      return snapshots;
+    } catch {
+      return [];
+    }
   }
 
   async restoreBackup(snapshotName: string) {
-    const snapshotPath = path.join(DOCKERMANAGER_BACKUP_DIR, 'default', snapshotName);
-    if (!fs.existsSync(snapshotPath)) {
+    const snapshotPath = path.join(
+      DOCKERMANAGER_BACKUP_DIR,
+      'default',
+      snapshotName,
+    );
+    try {
+      await fs.promises.access(snapshotPath);
+    } catch {
       throw new BadRequestException('Snapshot not found');
     }
 
     const rootFolderPath = this.getRootFolderPath();
-    if (!fs.existsSync(rootFolderPath)) {
-      fs.mkdirSync(rootFolderPath, { recursive: true });
-    }
+    await fs.promises.mkdir(rootFolderPath, { recursive: true });
 
-    const copyRecursive = (src: string, dest: string) => {
-      const entries = fs.readdirSync(src, { withFileTypes: true });
-      for (const entry of entries) {
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-        if (entry.isDirectory()) {
-          fs.mkdirSync(destPath, { recursive: true });
-          copyRecursive(srcPath, destPath);
-        } else {
-          fs.copyFileSync(srcPath, destPath);
-        }
-      }
-    };
+    // Fast non-blocking async copy using Node fs.promises.cp
+    await fs.promises.cp(snapshotPath, rootFolderPath, { recursive: true });
 
-    copyRecursive(snapshotPath, rootFolderPath);
+    this.invalidateCache();
 
     await this.prisma.activity.create({
       data: {
@@ -135,44 +182,54 @@ export class BackupService {
   }
 
   async deleteBackup(snapshotName: string) {
-    const snapshotPath = path.join(DOCKERMANAGER_BACKUP_DIR, 'default', snapshotName);
-    if (!fs.existsSync(snapshotPath)) {
+    const snapshotPath = path.join(
+      DOCKERMANAGER_BACKUP_DIR,
+      'default',
+      snapshotName,
+    );
+    try {
+      await fs.promises.access(snapshotPath);
+    } catch {
       throw new BadRequestException('Snapshot not found');
     }
 
-    fs.rmSync(snapshotPath, { recursive: true, force: true });
+    await fs.promises.rm(snapshotPath, { recursive: true, force: true });
+    this.invalidateCache();
     return { message: 'Backup deleted' };
   }
 
-  private countFiles(dirPath: string): number {
+  /**
+   * Single-pass asynchronous parallel traversal calculating both count and size concurrently
+   */
+  private async calculateDirStatsAsync(
+    dirPath: string,
+  ): Promise<{ count: number; size: number }> {
     let count = 0;
-    try {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
-        if (entry.isDirectory()) {
-          count += this.countFiles(fullPath);
-        } else {
-          count++;
-        }
-      }
-    } catch {}
-    return count;
-  }
-
-  private getDirSize(dirPath: string): number {
     let size = 0;
     try {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
-        if (entry.isDirectory()) {
-          size += this.getDirSize(fullPath);
-        } else {
-          size += fs.statSync(fullPath).size;
-        }
+      const entries = await fs.promises.readdir(dirPath, {
+        withFileTypes: true,
+      });
+      const results = await Promise.all(
+        entries.map(async (entry) => {
+          const fullPath = path.join(dirPath, entry.name);
+          if (entry.isDirectory()) {
+            return this.calculateDirStatsAsync(fullPath);
+          } else {
+            try {
+              const fileStat = await fs.promises.stat(fullPath);
+              return { count: 1, size: fileStat.size };
+            } catch {
+              return { count: 1, size: 0 };
+            }
+          }
+        }),
+      );
+      for (const r of results) {
+        count += r.count;
+        size += r.size;
       }
     } catch {}
-    return size;
+    return { count, size };
   }
 }

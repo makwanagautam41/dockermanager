@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   IconArchive,
@@ -124,21 +124,35 @@ export default function YamlPage() {
   } | null>(null);
   const [createValue, setCreateValue] = useState('');
   const [backups, setBackups] = useState<any[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const backupsLoadedWsRef = useRef<string | null>(null);
   const [spinYaml, setSpinYaml] = useState<YamlFile | null>(null);
   const [spinModify, setSpinModify] = useState<'ask' | 'modify' | 'direct'>(
     'ask',
   );
   const [spinModifiedContent, setSpinModifiedContent] = useState('');
 
+  const fetchBackups = useCallback(async (wsId: string, force = false) => {
+    if (!wsId) return;
+    if (!force && backupsLoadedWsRef.current === wsId) return;
+    setLoadingBackups(true);
+    try {
+      const data = await api.listBackups(wsId);
+      setBackups(data);
+      backupsLoadedWsRef.current = wsId;
+    } catch {
+      // ignore
+    } finally {
+      setLoadingBackups(false);
+    }
+  }, []);
+
   const lastFetchedWsId = useRef<string | null>(null);
   useEffect(() => {
     if (current?.id && current.id !== lastFetchedWsId.current) {
       lastFetchedWsId.current = current.id;
       ensureTree(current.id);
-      api
-        .listBackups(current.id)
-        .then(setBackups)
-        .catch(() => {});
+      // NOTE: Backups are lazy-loaded on demand when the backups tab is activated
     }
   }, [current?.id, ensureTree]);
 
@@ -202,6 +216,8 @@ export default function YamlPage() {
     try {
       await api.restoreBackup(current.id, snapshotName);
       toast.success('Backup restored');
+      fetchBackups(current.id, true);
+      refresh();
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -381,7 +397,15 @@ export default function YamlPage() {
 
         <div className="lg:col-span-8 xl:col-span-9">
           {selected && !selected.isDir ? (
-            <Tabs defaultValue="content" className="flex flex-col gap-3">
+            <Tabs
+              defaultValue="content"
+              className="flex flex-col gap-3"
+              onValueChange={(val) => {
+                if (val === 'backups' && current?.id) {
+                  fetchBackups(current.id);
+                }
+              }}
+            >
               <TabsList className="w-fit">
                 <TabsTrigger
                   value="content"
@@ -423,7 +447,12 @@ export default function YamlPage() {
                 />
               </TabsContent>
               <TabsContent value="backups" className="mt-0">
-                <BackupsList backups={backups} onRestore={doRestore} />
+                <BackupsList
+                  backups={backups}
+                  loading={loadingBackups}
+                  onRefresh={() => current && fetchBackups(current.id, true)}
+                  onRestore={doRestore}
+                />
               </TabsContent>
             </Tabs>
           ) : (
@@ -700,8 +729,6 @@ export default function YamlPage() {
           ) : null}
         </DialogContent>
       </Dialog>
-
-      <BackupsList backups={backups} onRestore={doRestore} />
     </div>
   );
 }
@@ -821,6 +848,8 @@ function CreateDialog({
 
 function BackupsList({
   backups,
+  loading = false,
+  onRefresh,
   onRestore,
 }: {
   backups: Array<{
@@ -830,6 +859,8 @@ function BackupsList({
     fileCount: number;
     size: number;
   }>;
+  loading?: boolean;
+  onRefresh?: () => void;
   onRestore: (snapshot: string) => void;
 }) {
   return (
@@ -837,10 +868,34 @@ function BackupsList({
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           <span>server backups</span>
-          <span>{backups.length} snapshots</span>
+          <div className="flex items-center gap-2">
+            <span>{backups.length} snapshots</span>
+            {onRefresh && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                onClick={onRefresh}
+                disabled={loading}
+                title="Refresh backups"
+              >
+                <IconRefresh
+                  className={cn('h-3 w-3', loading && 'animate-spin')}
+                  stroke={1.75}
+                />
+              </Button>
+            )}
+          </div>
         </div>
-        <ScrollArea className="h-[160px]">
-          {backups.length === 0 ? (
+        <ScrollArea className="h-[200px]">
+          {loading && backups.length === 0 ? (
+            <div className="grid h-[120px] place-items-center text-center">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <IconRefresh className="h-4 w-4 animate-spin" stroke={1.75} />
+                <span>Loading backups…</span>
+              </div>
+            </div>
+          ) : backups.length === 0 ? (
             <div className="grid h-[100px] place-items-center text-center">
               <div>
                 <IconArchive
