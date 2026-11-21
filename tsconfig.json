@@ -22,5 +22,5 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
-  "exclude": ["node_modules", "client", "dist", "**/*spec.ts"]
+  "exclude": ["node_modules", "client", "reference-folder", "dist", "**/*spec.ts"]
 }
