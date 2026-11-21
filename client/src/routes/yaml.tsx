@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   IconArchive,
@@ -161,29 +161,22 @@ export default function YamlPage() {
     }
   }, [current?.id, ensureTree]);
 
-  if (!hydrated) return <PageSkeleton variant="editor" />;
-  if (!current) return null;
-  const tree = treeByWs[current.id];
-  if (tree === undefined) return <PageSkeleton variant="editor" />;
-  if (!tree) {
-    return (
-      <EmptyState
-        icon={IconFolderOpen}
-        title="Workspace folder is unavailable"
-        description={`The configured root folder does not exist or cannot be read: ${current.rootFolder || '(not configured)'}`}
-      />
-    );
-  }
+  const currentTree = (current?.id && treeByWs[current.id]) || null;
 
-  const findFile = (node: YamlFile): YamlFile | null => {
-    if (node.id === selectedId) return node;
+  const findFile = useCallback((node: YamlFile | null, targetId: string | null): YamlFile | null => {
+    if (!node || !targetId) return null;
+    if (node.id === targetId) return node;
     for (const c of node.children ?? []) {
-      const f = findFile(c);
+      const f = findFile(c, targetId);
       if (f) return f;
     }
     return null;
-  };
-  const selected = selectedId ? findFile(tree) : null;
+  }, []);
+
+  const selected = useMemo(
+    () => findFile(currentTree, selectedId),
+    [currentTree, selectedId, findFile],
+  );
 
   // On-demand lazy load for file content if omitted from tree preview
   useEffect(() => {
@@ -204,6 +197,20 @@ export default function YamlPage() {
       }
     }
   }, [selected?.id, selected?.path]);
+
+  if (!hydrated) return <PageSkeleton variant="editor" />;
+  if (!current) return null;
+  const tree = treeByWs[current.id];
+  if (tree === undefined) return <PageSkeleton variant="editor" />;
+  if (!tree) {
+    return (
+      <EmptyState
+        icon={IconFolderOpen}
+        title="Workspace folder is unavailable"
+        description={`The configured root folder does not exist or cannot be read: ${current.rootFolder || '(not configured)'}`}
+      />
+    );
+  }
 
   const doImport = async () => {
     toast.error('Import feature has been removed from the explorer');
