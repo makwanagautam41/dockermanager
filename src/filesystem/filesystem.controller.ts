@@ -32,7 +32,7 @@ export class FilesystemController {
   @Post('tree')
   @ApiOperation({ summary: 'Get full recursive file tree with .env files' })
   getTree(@Body() dto: BrowseFolderDto) {
-    return this.service.getTree(dto.basePath, dto.subPath);
+    return this.service.getTree(dto.basePath, dto.subPath, dto.force);
   }
 
   @Post('read')

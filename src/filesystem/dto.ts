@@ -4,6 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class BrowseFolderDto {
   @ApiProperty() @IsString() basePath: string;
   @ApiPropertyOptional() @IsOptional() @IsString() subPath?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() force?: boolean;
 }
 
 export class ReadFileDto {

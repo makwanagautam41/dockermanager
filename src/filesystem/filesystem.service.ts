@@ -21,18 +21,10 @@ interface CacheEntry {
 export class FilesystemService {
   // In-memory cache for high-speed tree responses
   private treeCache = new Map<string, CacheEntry>();
-  private readonly CACHE_TTL_MS = 60000; // 60 seconds TTL
+  private readonly CACHE_TTL_MS = 10000; // 10 seconds TTL
 
-  public clearCache(subPathPrefix?: string) {
-    if (!subPathPrefix) {
-      this.treeCache.clear();
-      return;
-    }
-    for (const key of this.treeCache.keys()) {
-      if (key.startsWith(subPathPrefix) || subPathPrefix.startsWith(key)) {
-        this.treeCache.delete(key);
-      }
-    }
+  public clearCache(_subPathPrefix?: string) {
+    this.treeCache.clear();
   }
 
   private rootPath(): string {
@@ -125,7 +117,7 @@ export class FilesystemService {
     return filtered;
   }
 
-  async getTree(basePath: string, subPath?: string) {
+  async getTree(basePath: string, subPath?: string, force = false) {
     const resolvedBase = this.resolveBase(basePath);
     const target = subPath
       ? resolveSafePath(resolvedBase, subPath)
@@ -134,15 +126,17 @@ export class FilesystemService {
     await this.ensureRootAsync(target);
 
     // Fast cache check
-    const now = Date.now();
-    const cached = this.treeCache.get(target);
-    if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
-      try {
-        const rootStat = await fs.promises.stat(target);
-        if (rootStat.mtimeMs <= cached.mtimeMs) {
-          return { tree: cached.tree, envFiles: cached.envFiles };
-        }
-      } catch {}
+    if (!force) {
+      const now = Date.now();
+      const cached = this.treeCache.get(target);
+      if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
+        try {
+          const rootStat = await fs.promises.stat(target);
+          if (rootStat.mtimeMs <= cached.mtimeMs) {
+            return { tree: cached.tree, envFiles: cached.envFiles };
+          }
+        } catch {}
+      }
     }
 
     const envFiles: EnvFileEntry[] = [];
@@ -226,6 +220,11 @@ export class FilesystemService {
               path: envData.envPath,
               content: envData.content,
             });
+          }
+          for (const child of node.children) {
+            if (child && !child.isDir && (!child.env || child.env.length === 0)) {
+              child.env = envData.envVars;
+            }
           }
         }
       } else {

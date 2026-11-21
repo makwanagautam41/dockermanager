@@ -23,6 +23,7 @@ import {
   IconUpload,
   IconX,
   IconTerminal,
+  IconCheck,
 } from '@tabler/icons-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -126,6 +127,7 @@ export default function YamlPage() {
     isDir: boolean;
   } | null>(null);
   const [createValue, setCreateValue] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const [backups, setBackups] = useState<any[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -295,8 +297,13 @@ export default function YamlPage() {
             className="h-8 gap-1.5"
             onClick={async () => {
               if (current?.id) {
-                await ensureTree(current.id, true);
-                toast.success('Explorer refreshed');
+                const toastId = toast.loading('Refreshing Explorer…');
+                try {
+                  await ensureTree(current.id, true);
+                  toast.success('Explorer refreshed', { id: toastId });
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to refresh', { id: toastId });
+                }
               }
             }}
           >
@@ -386,6 +393,18 @@ export default function YamlPage() {
               >
                 <IconFolderPlus className="h-3.5 w-3.5" stroke={1.75} />
               </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                title="New .env at root"
+                onClick={() => {
+                  setCreateFor({ parent: tree, isDir: false });
+                  setCreateValue('.env');
+                }}
+              >
+                <IconKey className="h-3.5 w-3.5" stroke={1.75} />
+              </Button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto overscroll-contain p-2">
@@ -397,11 +416,15 @@ export default function YamlPage() {
               onAction={(node, action) => {
                 if (action === 'delete') setDeleteFor(node);
                 if (action === 'duplicate') {
-                  const id = duplicateYamlNode(current.id, node.id);
-                  if (id) {
-                    setSelectedId(id);
-                    toast.success(`Duplicated ${node.name}`);
-                  }
+                  const toastId = toast.loading(`Duplicating ${node.name}…`);
+                  duplicateYamlNode(current.id, node.id)
+                    .then((id) => {
+                      if (id) setSelectedId(id);
+                      toast.success(`Duplicated ${node.name}`, { id: toastId });
+                    })
+                    .catch((err: any) => {
+                      toast.error(err?.message || 'Failed to duplicate', { id: toastId });
+                    });
                 }
                 if (action === 'rename') {
                   setRenameFor(node);
@@ -414,6 +437,10 @@ export default function YamlPage() {
                 if (action === 'new-folder') {
                   setCreateFor({ parent: node, isDir: true });
                   setCreateValue('new-folder');
+                }
+                if (action === 'new-env') {
+                  setCreateFor({ parent: node, isDir: false });
+                  setCreateValue('.env');
                 }
               }}
             />
@@ -514,44 +541,69 @@ export default function YamlPage() {
         value={renameValue}
         onValue={setRenameValue}
         onClose={() => setRenameFor(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (renameFor && renameValue.trim()) {
-            renameYamlNode(current.id, renameFor.id, renameValue.trim());
-            toast.success(`Renamed to ${renameValue.trim()}`);
+            const trimmed = renameValue.trim();
+            const toastId = toast.loading(`Renaming to "${trimmed}"…`);
+            try {
+              await renameYamlNode(current.id, renameFor.id, trimmed);
+              toast.success(`Renamed to ${trimmed}`, { id: toastId });
+              setRenameFor(null);
+            } catch (err: any) {
+              toast.error(err?.message || 'Failed to rename', { id: toastId });
+            }
           }
-          setRenameFor(null);
         }}
       />
       <DeleteDialog
         node={deleteFor}
         onClose={() => setDeleteFor(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (deleteFor) {
-            if (selectedId === deleteFor.id) setSelectedId(null);
-            deleteYamlNode(current.id, deleteFor.id);
-            toast.success(`Deleted ${deleteFor.name}`);
+            const toastId = toast.loading(`Deleting "${deleteFor.name}"…`);
+            try {
+              if (selectedId === deleteFor.id) setSelectedId(null);
+              await deleteYamlNode(current.id, deleteFor.id);
+              toast.success(`Deleted ${deleteFor.name}`, { id: toastId });
+              setDeleteFor(null);
+            } catch (err: any) {
+              toast.error(err?.message || 'Failed to delete', { id: toastId });
+            }
           }
-          setDeleteFor(null);
         }}
       />
       <CreateDialog
         state={createFor}
         value={createValue}
         onValue={setCreateValue}
-        onClose={() => setCreateFor(null)}
-        onConfirm={() => {
-          if (createFor && createValue.trim()) {
-            const id = createYamlChild(
-              current.id,
-              createFor.parent.id,
-              createValue.trim(),
-              createFor.isDir,
-            );
-            if (id && !createFor.isDir) setSelectedId(id);
-            toast.success(`Created ${createValue.trim()}`);
-          }
-          setCreateFor(null);
+        onClose={() => {
+          if (!isCreating) setCreateFor(null);
         }}
+        onConfirm={async () => {
+          if (createFor && createValue.trim() && !isCreating) {
+            const trimmed = createValue.trim();
+            const toastId = toast.loading(
+              `Creating ${createFor.isDir ? 'folder' : 'file'} "${trimmed}"…`,
+            );
+            setIsCreating(true);
+            try {
+              const id = await createYamlChild(
+                current.id,
+                createFor.parent.id,
+                trimmed,
+                createFor.isDir,
+              );
+              if (id && !createFor.isDir) setSelectedId(id);
+              toast.success(`Created ${trimmed}`, { id: toastId });
+              setCreateFor(null);
+            } catch (err: any) {
+              toast.error(err?.message || 'Failed to create', { id: toastId });
+            } finally {
+              setIsCreating(false);
+            }
+          }
+        }}
+        loading={isCreating}
       />
 
       <Dialog
@@ -860,15 +912,17 @@ function CreateDialog({
   onValue,
   onClose,
   onConfirm,
+  loading = false,
 }: {
   state: { parent: YamlFile; isDir: boolean } | null;
   value: string;
   onValue: (v: string) => void;
   onClose: () => void;
   onConfirm: () => void;
+  loading?: boolean;
 }) {
   return (
-    <Dialog open={!!state} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={!!state} onOpenChange={(o) => !o && !loading && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono text-sm">
@@ -877,17 +931,21 @@ function CreateDialog({
         </DialogHeader>
         <Input
           autoFocus
+          disabled={loading}
           value={value}
           onChange={(e) => onValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
+          onKeyDown={(e) => e.key === 'Enter' && !loading && onConfirm()}
           className="font-mono text-sm"
           placeholder={state?.isDir ? 'folder-name' : 'filename.ext'}
         />
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" disabled={loading} onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={onConfirm}>Create</Button>
+          <Button disabled={loading || !value.trim()} onClick={onConfirm} className="gap-1.5">
+            {loading && <IconRefresh className="h-3.5 w-3.5 animate-spin" />}
+            {loading ? 'Creating…' : 'Create'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -997,26 +1055,90 @@ function EnvEditor({
   onChange,
 }: {
   file: YamlFile;
-  onChange: (env: EnvVar[]) => void;
+  onChange: (env: EnvVar[]) => Promise<void> | void;
 }) {
   const [showSecrets, setShowSecrets] = useState(false);
-  const env = file.env ?? [];
+  const [localEnv, setLocalEnv] = useState<EnvVar[]>(() => file.env ?? []);
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const lastFileIdRef = useRef<string>(file.id);
+
+  // Sync state if a different file is selected
+  useEffect(() => {
+    if (file.id !== lastFileIdRef.current) {
+      lastFileIdRef.current = file.id;
+      setLocalEnv(file.env ?? []);
+      setIsDirty(false);
+    }
+  }, [file.id, file.env]);
+
+  const saveChanges = useCallback(
+    async (varsToSave: EnvVar[], silent = false) => {
+      let toastId: string | number | undefined;
+      if (!silent) {
+        toastId = toast.loading('Saving .env…');
+      }
+      try {
+        setIsSaving(true);
+        await onChange(varsToSave);
+        setIsDirty(false);
+        if (!silent && toastId) {
+          toast.success('.env saved', { id: toastId });
+        }
+      } catch (err: any) {
+        if (!silent && toastId) {
+          toast.error(err?.message || 'Failed to save .env', { id: toastId });
+        } else {
+          toast.error(err?.message || 'Failed to save .env');
+        }
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [onChange],
+  );
+
+  // Debounced auto-save: saves 600ms after user finishes editing
+  useEffect(() => {
+    if (!isDirty) return;
+    const timer = setTimeout(() => {
+      saveChanges(localEnv, true);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [localEnv, isDirty, saveChanges]);
 
   const update = (i: number, patch: Partial<EnvVar>) => {
-    const next = env.map((e, idx) => (idx === i ? { ...e, ...patch } : e));
-    onChange(next);
+    setLocalEnv((prev) => {
+      const next = prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e));
+      return next;
+    });
+    setIsDirty(true);
   };
-  const remove = (i: number) => onChange(env.filter((_, idx) => idx !== i));
-  const add = () => onChange([...env, { key: 'NEW_KEY', value: '' }]);
+
+  const remove = (i: number) => {
+    setLocalEnv((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      saveChanges(next, true);
+      return next;
+    });
+  };
+
+  const add = () => {
+    setLocalEnv((prev) => {
+      const next = [...prev, { key: 'NEW_KEY', value: '' }];
+      saveChanges(next, true);
+      return next;
+    });
+  };
 
   const importDotEnv = async () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.env,.env.example,.txt';
     input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const text = await file.text();
+      const selectedFile = (e.target as HTMLInputElement).files?.[0];
+      if (!selectedFile) return;
+      const text = await selectedFile.text();
       const lines = text
         .split('\n')
         .filter((l) => l.trim() && !l.startsWith('#'));
@@ -1029,14 +1151,15 @@ function EnvEditor({
           secret: /pass|secret|token|key|password/i.test(l.slice(0, eqIdx)),
         };
       });
-      onChange(parsed);
-      toast.success(`Imported ${parsed.length} variables from ${file.name}`);
+      setLocalEnv(parsed);
+      await saveChanges(parsed, false);
+      toast.success(`Imported ${parsed.length} variables from ${selectedFile.name}`);
     };
     input.click();
   };
 
   const copyDotEnv = async () => {
-    const txt = env.map((e) => `${e.key}=${e.value}`).join('\n');
+    const txt = localEnv.map((e) => `${e.key}=${e.value}`).join('\n');
     try {
       await copyForExplorer(txt);
       toast.success('.env copied');
@@ -1049,11 +1172,16 @@ function EnvEditor({
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          <IconKey className="h-3.5 w-3.5" stroke={1.75} />
+          <IconKey className="h-3.5 w-3.5 text-emerald-500" stroke={1.75} />
           {file.path.replace(/\/[^/]+$/, '')}/.env
           <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-            isolated
+            {localEnv.length} vars
           </Badge>
+          {isDirty && (
+            <Badge variant="outline" className="h-4 px-1 text-[10px] text-amber-500 border-amber-500/30">
+              unsaved
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -1061,6 +1189,7 @@ function EnvEditor({
             variant="ghost"
             className="h-7 rounded-md px-2"
             onClick={() => setShowSecrets((v) => !v)}
+            title={showSecrets ? 'Hide secrets' : 'Show secrets'}
           >
             {showSecrets ? (
               <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
@@ -1073,6 +1202,7 @@ function EnvEditor({
             variant="ghost"
             className="h-7 rounded-md px-2"
             onClick={copyDotEnv}
+            title="Copy all variables"
           >
             <IconCopy className="h-3.5 w-3.5" stroke={1.75} />
           </Button>
@@ -1081,6 +1211,7 @@ function EnvEditor({
             variant="ghost"
             className="h-7 rounded-md px-2"
             onClick={importDotEnv}
+            title="Import from file"
           >
             <IconUpload className="h-3.5 w-3.5" stroke={1.75} />
           </Button>
@@ -1092,25 +1223,60 @@ function EnvEditor({
           >
             <IconPlus className="h-3.5 w-3.5" stroke={1.75} /> Add
           </Button>
+          <Button
+            size="sm"
+            variant={isDirty ? 'default' : 'outline'}
+            className="h-7 gap-1 rounded-md px-2 text-xs"
+            disabled={isSaving || !isDirty}
+            onClick={() => saveChanges(localEnv, false)}
+          >
+            {isSaving ? (
+              <IconRefresh className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <IconCheck className="h-3.5 w-3.5" stroke={1.75} />
+            )}
+            {isSaving ? 'Saving…' : isDirty ? 'Save' : 'Saved'}
+          </Button>
         </div>
       </div>
-      {env.length === 0 ? (
-        <div className="grid h-[220px] place-items-center text-center">
-          <div>
+      {localEnv.length === 0 ? (
+        <div className="grid h-[220px] place-items-center text-center p-4">
+          <div className="flex flex-col items-center gap-2">
             <IconKey
-              className="mx-auto mb-2 h-6 w-6 text-muted-foreground"
+              className="mx-auto mb-1 h-8 w-8 text-muted-foreground/60"
               stroke={1.75}
             />
-            <div className="text-sm font-medium">No variables</div>
-            <div className="text-xs text-muted-foreground">
-              Import a .env file or add variables manually.
+            <div className="text-sm font-medium">No environment variables</div>
+            <div className="text-xs text-muted-foreground max-w-xs">
+              Configure environment variables for this stack, or import from an existing .env file.
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={() => {
+                  const initial = [{ key: 'PORT', value: '8080', secret: false }];
+                  setLocalEnv(initial);
+                  saveChanges(initial, false);
+                }}
+              >
+                <IconPlus className="h-3.5 w-3.5" stroke={1.75} /> Create .env file
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                onClick={importDotEnv}
+              >
+                <IconUpload className="h-3.5 w-3.5" stroke={1.75} /> Import file
+              </Button>
             </div>
           </div>
         </div>
       ) : (
         <ScrollArea className="h-[320px]">
           <ul className="divide-y">
-            {env.map((v, i) => (
+            {localEnv.map((v, i) => (
               <li key={i} className="flex items-center gap-2 px-3 py-1.5">
                 <Input
                   value={v.key}
@@ -1142,6 +1308,7 @@ function EnvEditor({
                   variant="ghost"
                   className="h-8 w-8"
                   onClick={() => remove(i)}
+                  title="Remove variable"
                 >
                   <IconTrash
                     className="h-3.5 w-3.5 text-destructive"
@@ -1172,7 +1339,7 @@ function FileTree({
   onSelect: (id: string) => void;
   onAction: (
     node: YamlFile,
-    a: 'rename' | 'delete' | 'duplicate' | 'new-file' | 'new-folder',
+    a: 'rename' | 'delete' | 'duplicate' | 'new-file' | 'new-folder' | 'new-env',
   ) => void;
 }) {
   const isSelected = node.id === selectedId;
@@ -1254,6 +1421,9 @@ function FileTree({
                 <IconFolderPlus className="mr-2 h-3.5 w-3.5" stroke={1.75} />{' '}
                 New folder
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAction(node, 'new-env')}>
+                <IconKey className="mr-2 h-3.5 w-3.5" stroke={1.75} /> New .env file
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAction(node, 'rename')}>
                 <IconPencil className="mr-2 h-3.5 w-3.5" stroke={1.75} /> Rename
               </DropdownMenuItem>
@@ -1289,20 +1459,30 @@ function FileTree({
         ))}
       {/* Show .env file at the end of the tree if present */}
       {hasEnv && (
-        <div
+        <button
+          type="button"
           key="env"
+          onClick={() => {
+            if (node.children && node.children.length > 0) {
+              const yamlChild = node.children.find((c) => !c.isDir) || node.children[0];
+              onSelect(yamlChild.id);
+            }
+          }}
           className={cn(
-            'group flex items-center gap-1 rounded-md px-2 py-1 text-sm transition-colors hover:bg-accent',
+            'group flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-sm text-left transition-colors hover:bg-accent',
             isSelected && 'bg-accent',
           )}
           style={{ paddingLeft: (level + 1) * 12 + 8 }}
         >
           <IconKey
-            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            className="h-3.5 w-3.5 shrink-0 text-emerald-500"
             stroke={1.75}
           />
-          <span className="truncate font-medium">.env</span>
-        </div>
+          <span className="truncate font-mono text-xs font-medium">.env</span>
+          <Badge variant="secondary" className="ml-auto text-[10px] h-4 px-1 text-muted-foreground">
+            {node.env?.length ?? 0}
+          </Badge>
+        </button>
       )}
     </div>
   );
