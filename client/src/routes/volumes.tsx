@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { PageHelpPopover } from "@/components/page-help-popover";
 import {
   Table,
   TableBody,
@@ -335,13 +336,28 @@ export default function VolumesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Volumes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Docker volumes on this host.{" "}
-            <span className="font-medium">{volumes.length} volumes</span>
-          </p>
+          <PageHelpPopover
+            title="Volumes"
+            description="Manage persistent Docker storage volumes. Browse volume files, view disk usage, and prune unused volumes."
+            tips={[
+              "Click any volume to browse its internal files and directory structure",
+              "Use 'Prune' to reclaim disk space from orphaned/unattached volumes",
+              "View exact mount points and drivers used across your containers",
+            ]}
+            dockerCommands={[
+              "docker volume ls",
+              "docker volume inspect",
+              "docker volume create",
+              "docker volume rm",
+              "docker volume prune",
+            ]}
+          />
+          <span className="ml-2 hidden sm:inline-flex items-center rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium text-muted-foreground">
+            {volumes.length} volumes
+          </span>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setPruneOpen(true)}>

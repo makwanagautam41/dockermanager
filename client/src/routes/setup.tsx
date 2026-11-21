@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import type { DockerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useWorkspaces } from "@/lib/workspace-store";
+import { PageHelpPopover } from "@/components/page-help-popover";
 
 const QUICK_LINKS = [
   {
@@ -142,12 +143,24 @@ export default function SetupPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Setup</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Docker engine status, environment details, and quick-start actions.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Setup & Diagnostics</h1>
+          <PageHelpPopover
+            title="Setup & Diagnostics"
+            description="Inspect Docker engine system information, host resource quotas, kernel details, and daemon connectivity."
+            tips={[
+              "Click 'Test connection' to ping the Docker socket daemon",
+              "Check OS type, architecture, memory limits, and CPU allocation",
+              "Review storage driver and root directory configurations",
+            ]}
+            dockerCommands={[
+              "docker info",
+              "docker version",
+              "docker system df",
+              "docker system info",
+            ]}
+          />
         </div>
         <Button variant="outline" size="sm" onClick={testPing} disabled={pinging}>
           <IconRefresh className={cn("mr-2 h-4 w-4", pinging && "animate-spin")} stroke={1.75} />

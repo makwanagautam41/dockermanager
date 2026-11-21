@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PageHelpPopover } from "@/components/page-help-popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -348,15 +349,38 @@ export default function ContainersPage() {
   return (
     <div className="space-y-5">
       {/* Header with view toggle at TOP */}
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Containers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            All Docker containers on this host.{" "}
-            <span className="text-emerald-500 font-medium">{runningCount} running</span>
-            {" · "}
-            <span className="text-muted-foreground">{containers.length - runningCount} stopped</span>
-          </p>
+          <PageHelpPopover
+            title="Containers"
+            description="Manage all running and stopped Docker containers on this host. Inspect real-time status, logs, resource consumption, and port mappings."
+            tips={[
+              "Click any container row to inspect environment, logs, and live stats",
+              "Use 'Create from YAML' to deploy a new stack from Compose definition",
+              "Use bulk actions to restart, pause, stop, or remove multiple containers at once",
+            ]}
+            dockerCommands={[
+              "docker ps",
+              "docker ps -a",
+              "docker start",
+              "docker stop",
+              "docker restart",
+              "docker rm -f",
+              "docker stats",
+            ]}
+          />
+          <div className="ml-2 hidden sm:flex items-center gap-1.5 font-mono text-xs">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-600 dark:text-emerald-400 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {runningCount} running
+            </span>
+            {containers.length - runningCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground font-medium">
+                {containers.length - runningCount} stopped
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => fetchContainers(true)} disabled={refreshing}>

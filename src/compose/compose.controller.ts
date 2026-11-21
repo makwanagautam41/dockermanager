@@ -21,6 +21,14 @@ export class ComposeController {
   ) {
     return this.service.upFromYaml(data);
   }
+
+  @Post('terminal/run')
+  @ApiOperation({
+    summary: 'Execute a docker or shell command in workspace folder',
+  })
+  runTerminal(@Body() data: { cwd?: string; command: string }) {
+    return this.service.runTerminalCommand(data);
+  }
 }
 
 @ApiTags('Workspaces')

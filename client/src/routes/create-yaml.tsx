@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import * as jsYaml from "js-yaml";
 import { analyzeYaml, type Finding, type AnalyzeResult } from "@/lib/compose-analyzer";
 import { api } from "@/lib/api";
+import { PageHelpPopover } from "@/components/page-help-popover";
 
 const DEFAULT_YAML = `services:
   web:
@@ -176,6 +177,20 @@ export default function CreateYamlPage() {
           </Button>
           <span className="text-muted-foreground font-mono text-[10px]">/</span>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Create from YAML</h1>
+          <PageHelpPopover
+            title="Create from YAML"
+            description="Paste raw Docker Compose YAML or template definitions. Live syntax and security analysis checks for port collisions, volume issues, and best practices before deployment."
+            tips={[
+              "Paste or drag-and-drop any docker-compose.yml content",
+              "Review automated warnings and findings before spinning up",
+              "Click 'Deploy' to automatically create the stack directory and spin up containers",
+            ]}
+            dockerCommands={[
+              "docker compose up -d",
+              "docker compose config",
+              "docker compose pull",
+            ]}
+          />
         </div>
         <div className="flex items-end gap-2">
           <Button

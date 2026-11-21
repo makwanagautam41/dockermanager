@@ -22,6 +22,7 @@ import {
   IconTrash,
   IconUpload,
   IconX,
+  IconTerminal,
 } from '@tabler/icons-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,8 @@ import { Badge } from '@/components/ui/badge';
 import { YamlEditor } from '@/components/yaml-editor';
 import { PageSkeleton } from '@/components/page-skeleton';
 import { EmptyState } from '@/components/empty-state';
+import { FolderTerminalDialog } from '@/components/folder-terminal';
+import { PageHelpPopover } from '@/components/page-help-popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -125,6 +128,7 @@ export default function YamlPage() {
   const [createValue, setCreateValue] = useState('');
   const [backups, setBackups] = useState<any[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const backupsLoadedWsRef = useRef<string | null>(null);
   const [spinYaml, setSpinYaml] = useState<YamlFile | null>(null);
   const [spinModify, setSpinModify] = useState<'ask' | 'modify' | 'direct'>(
@@ -251,18 +255,40 @@ export default function YamlPage() {
     }
   };
 
+  const terminalCwd = selected
+    ? selected.isDir
+      ? selected.path || `${current.rootFolder}/${selected.name}`
+      : selected.path
+        ? selected.path.substring(0, selected.path.lastIndexOf('/')) || current.rootFolder
+        : current.rootFolder
+    : current?.rootFolder || 'docker-yaml-files';
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
             File Explorer
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Workspace YAML and configuration files. Root: <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{current.rootFolder}</code>
-          </p>
+          <PageHelpPopover
+            title="File Explorer & Compose"
+            description="Inspect, edit, and spin Docker Compose YAML stacks and .env configuration files directly on the host file system."
+            tips={[
+              "Click any YAML file to view, edit, or live-validate syntax",
+              "Click 'Terminal' to launch an interactive shell in that stack directory",
+              "Edit environment variables with the dedicated .env tab",
+              "Use 'Spin' to launch the compose stack in one click",
+            ]}
+            dockerCommands={[
+              "docker compose up -d",
+              "docker compose down",
+              "docker compose ps",
+              "docker compose logs",
+              "docker compose config",
+            ]}
+          />
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -276,15 +302,14 @@ export default function YamlPage() {
           >
             <IconRefresh className="h-3.5 w-3.5" stroke={1.75} /> Refresh
           </Button>
-          {/* Import button removed per user request */}
           <Button
             size="sm"
             variant="outline"
             className="h-8 gap-1.5"
-            onClick={doImport}
-            title="Import (disabled)"
+            onClick={() => setTerminalOpen(true)}
+            title="Open terminal in current stack folder"
           >
-            <IconUpload className="h-3.5 w-3.5" stroke={1.75} /> Import
+            <IconTerminal className="h-3.5 w-3.5" stroke={1.75} /> Terminal
           </Button>
           <Button
             size="sm"
@@ -331,8 +356,8 @@ export default function YamlPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-12">
-        <Card className="lg:col-span-4 xl:col-span-3">
-          <div className="flex items-center justify-between border-b px-2 py-1.5">
+        <Card className="lg:col-span-4 xl:col-span-3 flex flex-col h-[calc(100vh-12rem)] min-h-[500px] overflow-hidden">
+          <div className="flex items-center justify-between border-b px-2 py-1.5 shrink-0 bg-muted/20">
             <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               files
             </span>
@@ -363,7 +388,7 @@ export default function YamlPage() {
               </Button>
             </div>
           </div>
-          <div className="p-2">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-2">
             <FileTree
               node={tree}
               level={0}
@@ -395,42 +420,54 @@ export default function YamlPage() {
           </div>
         </Card>
 
-        <div className="lg:col-span-8 xl:col-span-9">
+        <div className="lg:col-span-8 xl:col-span-9 flex flex-col h-[calc(100vh-12rem)] min-h-[500px] overflow-hidden">
           {selected && !selected.isDir ? (
             <Tabs
               defaultValue="content"
-              className="flex flex-col gap-3"
+              className="flex flex-col h-full gap-3"
               onValueChange={(val) => {
                 if (val === 'backups' && current?.id) {
                   fetchBackups(current.id);
                 }
               }}
             >
-              <TabsList className="w-fit">
-                <TabsTrigger
-                  value="content"
-                  className="gap-1.5 font-mono text-xs"
-                >
-                  <IconFile className="h-3.5 w-3.5" stroke={1.75} />{' '}
-                  {selected.name}
-                </TabsTrigger>
-                <TabsTrigger value="env" className="gap-1.5 font-mono text-xs">
-                  <IconKey className="h-3.5 w-3.5" stroke={1.75} /> .env
-                  <Badge
-                    variant="secondary"
-                    className="ml-1 h-4 px-1 text-[10px]"
+              <div className="flex items-center justify-between gap-2 shrink-0 border-b pb-2">
+                <TabsList className="w-fit">
+                  <TabsTrigger
+                    value="content"
+                    className="gap-1.5 font-mono text-xs"
                   >
-                    {selected.env?.length ?? 0}
-                  </Badge>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="backups"
-                  className="gap-1.5 font-mono text-xs"
+                    <IconFile className="h-3.5 w-3.5" stroke={1.75} />{' '}
+                    {selected.name}
+                  </TabsTrigger>
+                  <TabsTrigger value="env" className="gap-1.5 font-mono text-xs">
+                    <IconKey className="h-3.5 w-3.5" stroke={1.75} /> .env
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 h-4 px-1 text-[10px]"
+                    >
+                      {selected.env?.length ?? 0}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="backups"
+                    className="gap-1.5 font-mono text-xs"
+                  >
+                    <IconArchive className="h-3.5 w-3.5" stroke={1.75} /> backups
+                  </TabsTrigger>
+                </TabsList>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setTerminalOpen(true)}
+                  title="Open terminal in this file's folder"
                 >
-                  <IconArchive className="h-3.5 w-3.5" stroke={1.75} /> backups
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="content" className="mt-0">
+                  <IconTerminal className="h-3.5 w-3.5" />
+                  Terminal
+                </Button>
+              </div>
+              <TabsContent value="content" className="mt-0 flex-1 overflow-y-auto overscroll-contain">
                 <YamlEditor
                   value={selected.content}
                   filename={selected.name}
@@ -438,7 +475,7 @@ export default function YamlPage() {
                   onCopy={copyForExplorer}
                 />
               </TabsContent>
-              <TabsContent value="env" className="mt-0">
+              <TabsContent value="env" className="mt-0 flex-1 overflow-y-auto overscroll-contain">
                 <EnvEditor
                   file={selected}
                   onChange={(env) =>
@@ -446,7 +483,7 @@ export default function YamlPage() {
                   }
                 />
               </TabsContent>
-              <TabsContent value="backups" className="mt-0">
+              <TabsContent value="backups" className="mt-0 flex-1 overflow-y-auto overscroll-contain">
                 <BackupsList
                   backups={backups}
                   loading={loadingBackups}
@@ -729,6 +766,17 @@ export default function YamlPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <FolderTerminalDialog
+        open={terminalOpen}
+        onOpenChange={setTerminalOpen}
+        cwd={terminalCwd}
+        title={
+          selected
+            ? `Terminal · ${selected.name}`
+            : `Terminal · ${current.rootFolder || 'workspace'}`
+        }
+      />
     </div>
   );
 }
@@ -1220,15 +1268,24 @@ function FileTree({
         )}
       </div>
       {open &&
-        (node.children ?? []).map((c) => (
-          <FileTree
-            key={c.id}
-            node={c}
-            level={level + 1}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            onAction={onAction}
-          />
+        (level >= 3 ? (
+          <div
+            className="px-2 py-1 text-[11px] text-muted-foreground/60 italic"
+            style={{ paddingLeft: (level + 1) * 12 + 4 }}
+          >
+            Max display hierarchy reached
+          </div>
+        ) : (
+          (node.children ?? []).map((c) => (
+            <FileTree
+              key={c.id}
+              node={c}
+              level={level + 1}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              onAction={onAction}
+            />
+          ))
         ))}
       {/* Show .env file at the end of the tree if present */}
       {hasEnv && (

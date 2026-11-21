@@ -30,6 +30,7 @@ import { LogsViewer } from "@/components/logs-viewer";
 import { api } from "@/lib/api";
 import { useHealth } from "@/lib/health";
 import { cn } from "@/lib/utils";
+import { PageHelpPopover } from "@/components/page-help-popover";
 
 export default function ContainerDetailPage() {
   const { containerId } = useParams();
@@ -200,6 +201,21 @@ export default function ContainerDetailPage() {
             Back to containers
           </Button>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">{name}</h1>
+          <PageHelpPopover
+            title={`Container: ${name}`}
+            description="Detailed operational statistics, network port bindings, environment variables, and live logs for this container instance."
+            tips={[
+              "Click the Terminal icon to stream real-time standard output and error logs",
+              "Use Start, Stop, or Restart buttons to change container lifecycle state",
+              "Inspect published host ports to verify accessibility",
+            ]}
+            dockerCommands={[
+              `docker inspect ${containerId || ""}`,
+              `docker logs -f ${containerId || ""}`,
+              `docker stop ${containerId || ""}`,
+              `docker restart ${containerId || ""}`,
+            ]}
+          />
           <Badge variant={status === "running" ? "secondary" : "outline"} className="font-mono text-xs">
             {status}
           </Badge>

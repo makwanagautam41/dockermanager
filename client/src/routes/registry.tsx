@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { PageHelpPopover } from "@/components/page-help-popover";
 import {
   Dialog,
   DialogContent,
@@ -540,11 +541,24 @@ export default function RegistryPage() {
   return (
     <div className="space-y-5">
       {/* header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 border-b pb-3">
         <IconBrandDocker className="h-6 w-6 text-primary" stroke={1.75} />
-        <div className="flex-1">
+        <div className="flex items-center gap-2 flex-1">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Registry</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Docker Hub image explorer</p>
+          <PageHelpPopover
+            title="Docker Registry"
+            description="Explore and search images on Docker Hub. View popular tags, inspect architectures, and pull images directly with real-time layer progress."
+            tips={[
+              "Search official images (e.g. nginx, redis, postgres) or community repositories",
+              "Click on an image card to explore available tags and digests",
+              "Use 'Pull image' to download any custom repository tag to the local daemon",
+            ]}
+            dockerCommands={[
+              "docker search",
+              "docker pull <image>:<tag>",
+              "docker pull",
+            ]}
+          />
         </div>
         <Button
           variant="outline"

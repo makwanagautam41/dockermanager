@@ -120,34 +120,7 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border p-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center">
-        <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:hidden">
-          {import.meta.env.DEV ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-mono font-medium tracking-wide text-amber-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Development
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-medium tracking-wide text-emerald-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Production
-            </span>
-          )}
-        </div>
-        <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center py-1">
-          {import.meta.env.DEV ? (
-            <span
-              className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"
-              title="Development"
-            />
-          ) : (
-            <span
-              className="h-2 w-2 rounded-full bg-emerald-500"
-              title="Production"
-            />
-          )}
-        </div>
-      </SidebarFooter>
+      <SidebarFooter className="border-t border-sidebar-border p-2" />
     </Sidebar>
   );
 }

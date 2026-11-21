@@ -147,4 +147,66 @@ export class ComposeService {
       child.on('error', (e) => reject(e));
     });
   }
+
+  async runTerminalCommand(data: {
+    cwd?: string;
+    command: string;
+  }): Promise<{ stdout: string; stderr: string; code: number; cwd: string }> {
+    if (!data.command || !data.command.trim()) {
+      throw new BadRequestException('command is required');
+    }
+    const resolvedCwd = data.cwd
+      ? resolveWorkspacePath(data.cwd)
+      : resolveWorkspacePath('.');
+    if (!fs.existsSync(resolvedCwd)) {
+      throw new BadRequestException(`Directory does not exist: ${resolvedCwd}`);
+    }
+
+    return new Promise((resolve) => {
+      const child = spawn(data.command, {
+        cwd: resolvedCwd,
+        shell: true,
+        env: {
+          ...process.env,
+          PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+        },
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (d: Buffer) => {
+        stdout += d.toString();
+      });
+      child.stderr?.on('data', (d: Buffer) => {
+        stderr += d.toString();
+      });
+
+      const timer = setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {}
+      }, 120000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({
+          stdout,
+          stderr,
+          code: code ?? 0,
+          cwd: resolvedCwd,
+        });
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        resolve({
+          stdout,
+          stderr: (stderr ? stderr + '\n' : '') + err.message,
+          code: 1,
+          cwd: resolvedCwd,
+        });
+      });
+    });
+  }
 }

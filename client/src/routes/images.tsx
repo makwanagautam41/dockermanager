@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { PageHelpPopover } from "@/components/page-help-popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -126,12 +127,29 @@ export default function ImagesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Docker Images</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Local Docker images on this host. <span className="font-medium">{images.length} images</span>
-          </p>
+          <PageHelpPopover
+            title="Docker Images"
+            description="Manage local Docker container images. Search, inspect layers, run ad-hoc containers, or remove unused images to free disk space."
+            tips={[
+              "Click the 'Play' button to instantly spin up a container from any local image",
+              "Search by tag, repository name, or image ID",
+              "Remove unneeded dangling images safely",
+            ]}
+            dockerCommands={[
+              "docker images",
+              "docker pull",
+              "docker run",
+              "docker rmi",
+              "docker image prune",
+              "docker image inspect",
+            ]}
+          />
+          <span className="ml-2 hidden sm:inline-flex items-center rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium text-muted-foreground">
+            {images.length} local images
+          </span>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchImages(true)}>
           <IconRefresh className="mr-2 h-4 w-4" stroke={1.75} /> Refresh

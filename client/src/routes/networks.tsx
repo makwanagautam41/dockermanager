@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageHelpPopover } from "@/components/page-help-popover";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -188,12 +189,29 @@ export default function NetworksPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Networks</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Docker networks on this host. {totalContainers} container connection{totalContainers !== 1 ? "s" : ""} across {networks.length} network{networks.length !== 1 ? "s" : ""}.
-          </p>
+          <PageHelpPopover
+            title="Networks"
+            description="Inspect Docker networks (bridge, host, overlay, macvlan) and manage container network attachments."
+            tips={[
+              "Click any network to view connected containers, IP addresses, and gateway info",
+              "Connect or disconnect running containers directly from the network details pane",
+              "Use 'Inspect' to see full subnet and driver configuration",
+            ]}
+            dockerCommands={[
+              "docker network ls",
+              "docker network inspect",
+              "docker network create",
+              "docker network connect",
+              "docker network disconnect",
+              "docker network rm",
+            ]}
+          />
+          <span className="ml-2 hidden sm:inline-flex items-center rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium text-muted-foreground">
+            {networks.length} networks · {totalContainers} connections
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => fetchNetworks(true)} disabled={refreshing}>

@@ -299,6 +299,13 @@ export const api = {
     });
   },
 
+  async runTerminalCommand(cwd: string, command: string) {
+    return request<{ stdout: string; stderr: string; code: number; cwd: string }>("/stacks/terminal/run", {
+      method: "POST",
+      body: JSON.stringify({ cwd, command }),
+    });
+  },
+
   async composeDown(id: string) {
     return request<{ stdout: string; stderr: string }>(`/stacks/${id}/down`, { method: "POST" });
   },
