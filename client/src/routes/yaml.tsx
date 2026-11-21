@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   IconArchive,
@@ -130,8 +130,10 @@ export default function YamlPage() {
   );
   const [spinModifiedContent, setSpinModifiedContent] = useState('');
 
+  const lastFetchedWsId = useRef<string | null>(null);
   useEffect(() => {
-    if (current?.id) {
+    if (current?.id && current.id !== lastFetchedWsId.current) {
+      lastFetchedWsId.current = current.id;
       ensureTree(current.id);
       api
         .listBackups(current.id)

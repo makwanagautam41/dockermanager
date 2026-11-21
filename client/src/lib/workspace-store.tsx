@@ -159,6 +159,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
+  const currentIdRef = useRef(currentId);
+  currentIdRef.current = currentId;
+
   const loadWorkspaces = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -169,17 +174,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadStacks = useCallback(async () => {
-    if (!currentId) return;
-    const stacks = await api.listStacks(currentId).catch(() => [] as Stack[]);
-    setStacksByWs((prev) => ({ ...prev, [currentId]: stacks }));
-  }, [currentId]);
+    const wsId = currentIdRef.current;
+    if (!wsId) return;
+    const stacks = await api.listStacks(wsId).catch(() => [] as Stack[]);
+    setStacksByWs((prev) => ({ ...prev, [wsId]: stacks }));
+  }, []);
 
   const loadDashboard = useCallback(async () => {
-    if (!currentId) return;
+    const wsId = currentIdRef.current;
+    if (!wsId) return;
     const dash = await api.getDashboard().catch(() => null);
     if (!dash) return;
     setActivityByWs((prev) => {
-      const local = prev[currentId] ?? [];
+      const local = prev[wsId] ?? [];
       const remote = (dash.recentActivity as ActivityEvent[]) ?? [];
       const byId = new Map<string, ActivityEvent>();
       for (const e of remote) byId.set(e.id, e);
@@ -187,9 +194,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const merged = [...byId.values()].sort(
         (a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime(),
       );
-      return { ...prev, [currentId]: merged.slice(0, 100) };
+      return { ...prev, [wsId]: merged.slice(0, 100) };
     });
-  }, [currentId]);
+  }, []);
 
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -218,9 +225,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const ensureTree = useCallback(
     async (workspaceId?: string, force = false) => {
-      const wsId = workspaceId || currentId;
+      const wsId = workspaceId || currentIdRef.current;
       if (!wsId) return;
-      const ws = workspaces.find((w) => w.id === wsId);
+      const ws = workspacesRef.current.find((w) => w.id === wsId);
       if (!ws || !ws.rootFolder) {
         setTreeByWs((prev) => ({ ...prev, [wsId]: null }));
         return;
@@ -272,14 +279,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [currentId, workspaces],
+    [],
   );
 
   const loadTree = ensureTree;
 
-  // On initial workspace selection, do not load tree (lazy on-demand only for Explorer)
+  // On workspace change, only load stacks if id changed; tree is loaded on-demand
+  const prevCurrentIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (currentId) {
+    if (currentId && currentId !== prevCurrentIdRef.current) {
+      prevCurrentIdRef.current = currentId;
       loadStacks();
     }
   }, [currentId, loadStacks]);

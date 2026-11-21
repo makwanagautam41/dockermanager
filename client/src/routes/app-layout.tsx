@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TopBar } from "@/components/top-bar";
@@ -16,11 +16,11 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const [dismissedError, setDismissedError] = useState(false);
   const [serverUp, setServerUp] = useState<boolean | null>(null);
-  const [checking, setChecking] = useState(false);
+  const checkingRef = useRef(false);
 
   const checkServer = useCallback(async () => {
-    if (checking) return;
-    setChecking(true);
+    if (checkingRef.current) return;
+    checkingRef.current = true;
     try {
       const [healthRes, ollamaRes] = await Promise.allSettled([
         api.health(),
@@ -46,9 +46,9 @@ export default function AppLayout() {
         healthGate.set("ollamaReachable", "failed", "Ollama is not reachable");
       }
     } finally {
-      setChecking(false);
+      checkingRef.current = false;
     }
-  }, [checking]);
+  }, []);
 
   useEffect(() => {
     checkServer();
@@ -70,7 +70,7 @@ export default function AppLayout() {
   }, [hydrated, workspaces.length, navigate]);
 
   if (serverUp === false) {
-    return <ServerDownPage onRetry={checkServer} checking={checking} />;
+    return <ServerDownPage onRetry={checkServer} checking={checkingRef.current} />;
   }
 
   if (!hydrated) {
