@@ -23,6 +23,82 @@ export class FilesystemService {
   private treeCache = new Map<string, CacheEntry>();
   private readonly CACHE_TTL_MS = 10000; // 10 seconds TTL
 
+  // Directories storing heavy volume data, media libraries, or dependencies to ignore from tree scanning
+  private readonly IGNORED_DIRS = new Set([
+    '.git',
+    'node_modules',
+    '.ds_store',
+    '.cache',
+    '.npm',
+    '.yarn',
+    '.pnpm-store',
+    // Media / photo / video storage libraries (e.g. Immich, Nextcloud, Photoprism)
+    'library',
+    'media',
+    'photos',
+    'videos',
+    'thumbs',
+    'thumbnails',
+    'upload',
+    'uploads',
+    'encoded-video',
+    'profile',
+    // Database / volume data directories
+    'data',
+    'db_data',
+    'db-data',
+    'database',
+    'pgdata',
+    'pg_data',
+    'mysql_data',
+    'mysql-data',
+    'mariadb_data',
+    'redis_data',
+    'model-cache',
+    'storage',
+    'volumes',
+    // App internal caches
+    '.immich',
+    '.next',
+    '.turbo',
+    'venv',
+    '.venv',
+    '__pycache__',
+  ]);
+
+  private readonly BINARY_EXTS = new Set([
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.heic', '.raw',
+    '.mp4', '.mov', '.mkv', '.avi', '.webm', '.flv', '.wmv', '.mp3', '.wav', '.aac', '.flac', '.ogg',
+    '.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar', '.bin', '.iso', '.exe', '.dll', '.so', '.dylib',
+    '.db', '.sqlite', '.sqlite3', '.db3', '.rdb', '.frm', '.ibd',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.woff', '.woff2', '.ttf', '.eot', '.otf',
+  ]);
+
+  private readonly TEXT_EXTS = new Set([
+    '.yml',
+    '.yaml',
+    '.env',
+    '.json',
+    '.conf',
+    '.cfg',
+    '.txt',
+    '.sh',
+    '.bash',
+    '.zsh',
+    '.toml',
+    '.ini',
+    '.md',
+    '.dockerfile',
+    '.xml',
+    '.sql',
+    '.properties',
+  ]);
+
+  private isIgnoredDir(name: string): boolean {
+    const lower = name.toLowerCase();
+    return this.IGNORED_DIRS.has(lower) || lower.startsWith('.git');
+  }
+
   public clearCache(_subPathPrefix?: string) {
     this.treeCache.clear();
   }
@@ -80,10 +156,15 @@ export class FilesystemService {
     await this.ensureExistsAsync(target);
 
     const entries = await fs.promises.readdir(target, { withFileTypes: true });
+    const visibleEntries = entries.filter((e) => {
+      if (e.isDirectory() && this.isIgnoredDir(e.name)) return false;
+      if (e.name === '.DS_Store' || e.name === 'Thumbs.db') return false;
+      return true;
+    });
 
     // Process all stats in parallel
     const result = await Promise.all(
-      entries.map(async (e) => {
+      visibleEntries.map(async (e) => {
         const full = path.join(target, e.name);
         try {
           const stat = await fs.promises.stat(full);
@@ -171,9 +252,11 @@ export class FilesystemService {
           entries = [];
         }
 
-        const filteredEntries = entries.filter(
-          (e) => e.name !== '.git' && e.name !== 'node_modules' && e.name !== '.DS_Store',
-        );
+        const filteredEntries = entries.filter((e) => {
+          if (e.isDirectory() && this.isIgnoredDir(e.name)) return false;
+          if (e.name === '.DS_Store' || e.name === 'Thumbs.db') return false;
+          return true;
+        });
 
         // Process children concurrently in parallel
         const [children, envData] = await Promise.all([
@@ -228,15 +311,41 @@ export class FilesystemService {
           }
         }
       } else {
-        // Only read text files if size is under 5MB to avoid blocking memory
-        if (stat.size <= 5 * 1024 * 1024) {
+        const ext = path.extname(currentPath).toLowerCase();
+        const baseName = path.basename(currentPath).toLowerCase();
+        const isKnownText =
+          this.TEXT_EXTS.has(ext) ||
+          baseName === 'dockerfile' ||
+          baseName.startsWith('.env') ||
+          baseName.endsWith('.yml') ||
+          baseName.endsWith('.yaml');
+
+        if (this.BINARY_EXTS.has(ext)) {
+          node.content = 'Binary file (preview not supported)';
+        } else if (isKnownText && stat.size <= 256 * 1024) {
           try {
             node.content = await fs.promises.readFile(currentPath, 'utf-8');
           } catch {
-            node.content = 'Binary or unsupported file';
+            node.content = '';
           }
+        } else if (stat.size > 256 * 1024) {
+          node.content = 'File too large for tree preview (click to view)';
         } else {
-          node.content = 'File too large to display directly in preview';
+          // Probe if small non-binary file
+          if (stat.size <= 64 * 1024) {
+            try {
+              const buf = await fs.promises.readFile(currentPath);
+              if (!buf.slice(0, 512).includes(0)) {
+                node.content = buf.toString('utf-8');
+              } else {
+                node.content = 'Binary file (preview not supported)';
+              }
+            } catch {
+              node.content = '';
+            }
+          } else {
+            node.content = '';
+          }
         }
       }
 
