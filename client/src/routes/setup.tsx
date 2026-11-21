@@ -96,7 +96,9 @@ export default function SetupPage() {
 
   useEffect(() => {
     fetchStatus();
-    const t = setInterval(() => fetchStatus(true), 10000);
+    const t = setInterval(() => {
+      if (!document.hidden) fetchStatus(true);
+    }, 20000);
     return () => clearInterval(t);
   }, []);
 

@@ -65,7 +65,9 @@ export default function ContainerDetailPage() {
   useEffect(() => {
     setContainer(null);
     fetchContainer();
-    const t = setInterval(() => fetchContainer(true), 10000);
+    const t = setInterval(() => {
+      if (!document.hidden) fetchContainer(true);
+    }, 15000);
     return () => clearInterval(t);
   }, [containerId]);
 

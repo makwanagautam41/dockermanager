@@ -128,7 +128,9 @@ export default function NetworksPage() {
   useEffect(() => {
     fetchNetworks();
     fetchContainers();
-    const t = setInterval(() => fetchNetworks(true), 10000);
+    const t = setInterval(() => {
+      if (!document.hidden) fetchNetworks(true);
+    }, 15000);
     return () => clearInterval(t);
   }, []);
 

@@ -112,6 +112,7 @@ export default function YamlPage() {
     pushActivity,
     hydrated,
     refresh,
+    ensureTree,
   } = useWorkspaces();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<YamlFile | null>(null);
@@ -131,12 +132,13 @@ export default function YamlPage() {
 
   useEffect(() => {
     if (current?.id) {
+      ensureTree(current.id);
       api
         .listBackups(current.id)
         .then(setBackups)
         .catch(() => {});
     }
-  }, [current?.id]);
+  }, [current?.id, ensureTree]);
 
   if (!hydrated) return <PageSkeleton variant="editor" />;
   if (!current) return null;
@@ -247,9 +249,11 @@ export default function YamlPage() {
             size="sm"
             variant="outline"
             className="h-8 gap-1.5"
-            onClick={() => {
-              refresh();
-              toast.success('Explorer refreshed');
+            onClick={async () => {
+              if (current?.id) {
+                await ensureTree(current.id, true);
+                toast.success('Explorer refreshed');
+              }
             }}
           >
             <IconRefresh className="h-3.5 w-3.5" stroke={1.75} /> Refresh

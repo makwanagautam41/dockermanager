@@ -170,7 +170,9 @@ export default function ContainersPage() {
   useEffect(() => {
     fetchContainers();
     const ms = getRefreshIntervalMs();
-    intervalRef.current = setInterval(() => fetchContainers(true), ms);
+    intervalRef.current = setInterval(() => {
+      if (!document.hidden) fetchContainers(true);
+    }, ms);
     const unsub = onSync(SYNC_EVENTS.CONTAINERS_CHANGED, () => fetchContainers(true));
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

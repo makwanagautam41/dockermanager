@@ -1,6 +1,8 @@
 import {
   Component,
   StrictMode,
+  Suspense,
+  lazy,
   useEffect,
   useState,
   type ErrorInfo,
@@ -13,22 +15,24 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { WorkspaceProvider, getStoredToken } from "@/lib/workspace-store";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { PageSkeleton } from "@/components/skeletons";
 import "./index.css";
 
-import Index from "./routes/index";
-import OnboardingRoute from "./routes/onboarding";
 import AppLayout from "./routes/app-layout";
-import ContainersPage from "./routes/containers";
-import ContainerDetailPage from "./routes/container-detail";
-import ImagesPage from "./routes/images";
-import NetworksPage from "./routes/networks";
-import VolumesPage from "./routes/volumes";
-import RegistryPage from "./routes/registry";
-import YamlPage from "./routes/yaml";
-import CreateYamlPage from "./routes/create-yaml";
-import SetupPage from "./routes/setup";
-import StacksRedirect from "./routes/redirect-stacks";
-import StackDetail from "./routes/stack-detail";
+
+const Index = lazy(() => import("./routes/index"));
+const OnboardingRoute = lazy(() => import("./routes/onboarding"));
+const ContainersPage = lazy(() => import("./routes/containers"));
+const ContainerDetailPage = lazy(() => import("./routes/container-detail"));
+const ImagesPage = lazy(() => import("./routes/images"));
+const NetworksPage = lazy(() => import("./routes/networks"));
+const VolumesPage = lazy(() => import("./routes/volumes"));
+const RegistryPage = lazy(() => import("./routes/registry"));
+const YamlPage = lazy(() => import("./routes/yaml"));
+const CreateYamlPage = lazy(() => import("./routes/create-yaml"));
+const SetupPage = lazy(() => import("./routes/setup"));
+const StacksRedirect = lazy(() => import("./routes/redirect-stacks"));
+const StackDetail = lazy(() => import("./routes/stack-detail"));
 
 const STORAGE_KEY = "dockermanager-state-v2";
 
@@ -191,24 +195,26 @@ createRoot(document.getElementById("root")!).render(
         <ThemeProvider>
           <WorkspaceProvider>
             <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/onboarding" element={<OnboardingRoute />} />
-                <Route element={<AppLayout />}>
-                  <Route path="/containers" element={<ContainersPage />} />
-                  <Route path="/containers/:containerId" element={<ContainerDetailPage />} />
-                  <Route path="/networks" element={<NetworksPage />} />
-                  <Route path="/create/yaml" element={<CreateYamlPage />} />
-                  <Route path="/images" element={<ImagesPage />} />
-                  <Route path="/volumes" element={<VolumesPage />} />
-                  <Route path="/registry" element={<RegistryPage />} />
-                  <Route path="/yaml" element={<YamlPage />} />
-                  <Route path="/setup" element={<SetupPage />} />
-                  <Route path="/stacks" element={<StacksRedirect />} />
-                  <Route path="/stacks/:stackId" element={<StackDetail />} />
-                </Route>
-                <Route path="*" element={<NotFoundComponent />} />
-              </Routes>
+              <Suspense fallback={<PageSkeleton />}>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/onboarding" element={<OnboardingRoute />} />
+                  <Route element={<AppLayout />}>
+                    <Route path="/containers" element={<ContainersPage />} />
+                    <Route path="/containers/:containerId" element={<ContainerDetailPage />} />
+                    <Route path="/networks" element={<NetworksPage />} />
+                    <Route path="/create/yaml" element={<CreateYamlPage />} />
+                    <Route path="/images" element={<ImagesPage />} />
+                    <Route path="/volumes" element={<VolumesPage />} />
+                    <Route path="/registry" element={<RegistryPage />} />
+                    <Route path="/yaml" element={<YamlPage />} />
+                    <Route path="/setup" element={<SetupPage />} />
+                    <Route path="/stacks" element={<StacksRedirect />} />
+                    <Route path="/stacks/:stackId" element={<StackDetail />} />
+                  </Route>
+                  <Route path="*" element={<NotFoundComponent />} />
+                </Routes>
+              </Suspense>
             </BrowserRouter>
             <Toaster richColors position="top-right" />
           </WorkspaceProvider>

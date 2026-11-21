@@ -19,33 +19,50 @@ export default function AppLayout() {
   const [checking, setChecking] = useState(false);
 
   const checkServer = useCallback(async () => {
+    if (checking) return;
     setChecking(true);
     try {
-      await api.health();
-      healthGate.set("dockerEngine", "ok");
-      setServerUp(true);
-    } catch {
-      healthGate.set("dockerEngine", "failed", "Docker engine is not reachable");
-      setServerUp(false);
-    }
-    try {
-      const status = await api.ollamaStatus();
-      healthGate.set(
-        "ollamaReachable",
-        status.connected ? "ok" : "failed",
-        status.error || "Ollama is not reachable",
-      );
-    } catch {
-      healthGate.set("ollamaReachable", "failed", "Ollama is not reachable");
+      const [healthRes, ollamaRes] = await Promise.allSettled([
+        api.health(),
+        api.ollamaStatus(),
+      ]);
+
+      if (healthRes.status === "fulfilled") {
+        healthGate.set("dockerEngine", "ok");
+        setServerUp(true);
+      } else {
+        healthGate.set("dockerEngine", "failed", "Docker engine is not reachable");
+        setServerUp(false);
+      }
+
+      if (ollamaRes.status === "fulfilled") {
+        const status = ollamaRes.value;
+        healthGate.set(
+          "ollamaReachable",
+          status.connected ? "ok" : "failed",
+          status.error || "Ollama is not reachable",
+        );
+      } else {
+        healthGate.set("ollamaReachable", "failed", "Ollama is not reachable");
+      }
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [checking]);
 
   useEffect(() => {
     checkServer();
-    const t = setInterval(checkServer, 5000);
-    return () => clearInterval(t);
+    const handleVis = () => {
+      if (!document.hidden) checkServer();
+    };
+    document.addEventListener("visibilitychange", handleVis);
+    const t = setInterval(() => {
+      if (!document.hidden) checkServer();
+    }, 30000);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", handleVis);
+    };
   }, [checkServer]);
 
   useEffect(() => {

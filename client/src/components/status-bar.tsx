@@ -18,25 +18,41 @@ export function StatusBar() {
   const [dockerRunning, setDockerRunning] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const check = () => {
-      api
-        .dockerStatus()
-        .then((s) => setDockerRunning(s.running))
-        .catch(() => setDockerRunning(false));
-      api
-        .listContainers()
-        .then((containers) => {
+    let mounted = true;
+    const check = async () => {
+      if (document.hidden) return;
+      try {
+        const [statusRes, containersRes] = await Promise.allSettled([
+          api.dockerStatus(),
+          api.listContainers(),
+        ]);
+        if (!mounted) return;
+        if (statusRes.status === "fulfilled") {
+          setDockerRunning(statusRes.value.running);
+        } else {
+          setDockerRunning(false);
+        }
+        if (containersRes.status === "fulfilled") {
+          const containers = containersRes.value;
           setContainerCount({
             total: containers.length,
             running: containers.filter((c) => c.status === "running").length,
             errored: containers.filter((c) => c.status === "error").length,
           });
-        })
-        .catch(() => setContainerCount({ running: 0, total: 0, errored: 0 }));
+        }
+      } catch {}
     };
     check();
-    const t = setInterval(check, 10000);
-    return () => clearInterval(t);
+    const handleVis = () => {
+      if (!document.hidden) check();
+    };
+    document.addEventListener("visibilitychange", handleVis);
+    const t = setInterval(check, 20000);
+    return () => {
+      mounted = false;
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", handleVis);
+    };
   }, []);
 
   return (
