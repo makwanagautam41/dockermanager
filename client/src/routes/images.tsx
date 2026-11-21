@@ -128,8 +128,8 @@ export default function ImagesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Docker Images</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Docker Images</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Local Docker images on this host. <span className="font-medium">{images.length} images</span>
           </p>
         </div>

@@ -543,8 +543,8 @@ export default function RegistryPage() {
       <div className="flex items-center gap-3">
         <IconBrandDocker className="h-6 w-6 text-primary" stroke={1.75} />
         <div className="flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Registry</h1>
-          <p className="text-sm text-muted-foreground">Docker Hub image explorer</p>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Registry</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Docker Hub image explorer</p>
         </div>
         <Button
           variant="outline"

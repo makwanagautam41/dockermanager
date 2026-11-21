@@ -199,7 +199,7 @@ export default function ContainerDetailPage() {
             <IconX className="mr-1 h-4 w-4" />
             Back to containers
           </Button>
-          <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">{name}</h1>
           <Badge variant={status === "running" ? "secondary" : "outline"} className="font-mono text-xs">
             {status}
           </Badge>

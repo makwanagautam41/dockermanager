@@ -190,8 +190,8 @@ export default function NetworksPage() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Networks</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Networks</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Docker networks on this host. {totalContainers} container connection{totalContainers !== 1 ? "s" : ""} across {networks.length} network{networks.length !== 1 ? "s" : ""}.
           </p>
         </div>

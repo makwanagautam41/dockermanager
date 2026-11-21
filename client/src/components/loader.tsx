@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 export function Loader({
@@ -16,11 +16,7 @@ export function Loader({
       role="status"
       aria-live="polite"
     >
-      <IconLoader2
-        className="animate-spin"
-        style={{ width: size, height: size }}
-        stroke={1.75}
-      />
+      <Spinner className={cn("shrink-0", className)} style={{ width: size, height: size } as any} />
       {label && <span className="font-mono text-xs">{label}</span>}
     </div>
   );
@@ -31,8 +27,7 @@ export function FullPageLoader({ label = "loading workspace…" }: { label?: str
     <div className="grid min-h-[60vh] w-full place-items-center">
       <div className="flex flex-col items-center gap-3">
         <div className="relative flex h-10 w-10 items-center justify-center">
-          <span className="absolute inset-0 animate-ping rounded-full bg-foreground/10" />
-          <IconLoader2 className="h-5 w-5 animate-spin text-foreground/70" stroke={1.75} />
+          <Spinner className="h-6 w-6 text-foreground/80" />
         </div>
         <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           {label}
@@ -41,3 +36,5 @@ export function FullPageLoader({ label = "loading workspace…" }: { label?: str
     </div>
   );
 }
+
+export default Loader;

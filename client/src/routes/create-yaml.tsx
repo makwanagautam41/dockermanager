@@ -175,7 +175,7 @@ export default function CreateYamlPage() {
             </span>
           </Button>
           <span className="text-muted-foreground font-mono text-[10px]">/</span>
-          <h1 className="text-xl font-semibold tracking-tight">Create from YAML</h1>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Create from YAML</h1>
         </div>
         <div className="flex items-end gap-2">
           <Button

@@ -237,11 +237,11 @@ export default function YamlPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
             File Explorer
           </h1>
-          <p className="text-mono text-xs text-muted-foreground">
-            root: {current.rootFolder}
+          <p className="mt-1 text-sm text-muted-foreground">
+            Workspace YAML and configuration files. Root: <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{current.rootFolder}</code>
           </p>
         </div>
         <div className="flex gap-2">

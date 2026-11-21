@@ -337,8 +337,8 @@ export default function VolumesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Volumes</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Volumes</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Docker volumes on this host.{" "}
             <span className="font-medium">{volumes.length} volumes</span>
           </p>

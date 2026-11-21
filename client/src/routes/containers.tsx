@@ -349,9 +349,9 @@ export default function ContainersPage() {
     <div className="space-y-5">
       {/* Header with view toggle at TOP */}
       <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Containers</h1>
-          <p className="text-sm text-muted-foreground">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Containers</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             All Docker containers on this host.{" "}
             <span className="text-emerald-500 font-medium">{runningCount} running</span>
             {" · "}

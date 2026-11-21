@@ -1,6 +1,17 @@
-export function Spinner({ className = "" }: { className?: string }) {
+import * as React from "react";
+
+export function Spinner({
+  className = "",
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
-    <span className={`inline-flex items-center justify-center h-4 w-4 ${className}`}>
+    <span
+      className={`inline-flex items-center justify-center h-4 w-4 ${className}`}
+      style={style}
+    >
       <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
         {Array.from({ length: 12 }).map((_, i) => (
           <rect
@@ -24,3 +35,5 @@ export function Spinner({ className = "" }: { className?: string }) {
     </span>
   );
 }
+
+export default Spinner;
