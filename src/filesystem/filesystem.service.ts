@@ -262,8 +262,17 @@ export class FilesystemService {
   async readFile(filePath: string) {
     const resolved = this.resolveFilePath(filePath);
     await this.ensureExistsAsync(resolved);
-    const content = await fs.promises.readFile(resolved, 'utf-8');
-    return { path: resolved, content };
+    try {
+      const content = await fs.promises.readFile(resolved, 'utf-8');
+      return { path: resolved, content };
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        throw new BadRequestException(
+          `Permission denied (EACCES): Cannot read "${path.basename(resolved)}". Run: sudo chmod +r "${resolved}"`,
+        );
+      }
+      throw err;
+    }
   }
 
   async writeFile(filePath: string, content: string) {
@@ -277,8 +286,63 @@ export class FilesystemService {
       }
     }
     const dir = path.dirname(resolved);
-    await fs.promises.mkdir(dir, { recursive: true });
-    await fs.promises.writeFile(resolved, content, 'utf-8');
+    try {
+      await fs.promises.mkdir(dir, { recursive: true });
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        throw new BadRequestException(
+          `Permission denied (EACCES): Cannot create directory "${dir}". Run: sudo chown -R $USER:$USER "${dir}"`,
+        );
+      }
+      throw err;
+    }
+
+    try {
+      await fs.promises.writeFile(resolved, content, 'utf-8');
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        // Fallback for files owned by Docker/nobody/root:
+        let written = false;
+
+        // 1. Try atomic replace via temporary file + rename (works when parent dir is writable)
+        const tmpPath = path.join(dir, `.tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+        try {
+          await fs.promises.writeFile(tmpPath, content, 'utf-8');
+          await fs.promises.rename(tmpPath, resolved);
+          written = true;
+        } catch {
+          try {
+            await fs.promises.unlink(tmpPath);
+          } catch {}
+        }
+
+        // 2. Try unlinking existing file first (POSIX allows unlink if dir is writable), then write
+        if (!written) {
+          try {
+            await fs.promises.unlink(resolved);
+            await fs.promises.writeFile(resolved, content, 'utf-8');
+            written = true;
+          } catch {}
+        }
+
+        // 3. Try chmod 0666 on file
+        if (!written) {
+          try {
+            await fs.promises.chmod(resolved, 0o666);
+            await fs.promises.writeFile(resolved, content, 'utf-8');
+            written = true;
+          } catch {}
+        }
+
+        if (!written) {
+          throw new BadRequestException(
+            `Permission denied (EACCES): Cannot write to "${path.basename(resolved)}". The file or directory is owned by another process (such as Docker root/nobody). To grant permission, run in your terminal: sudo chown -R $USER:$USER "${dir}"`,
+          );
+        }
+      } else {
+        throw err;
+      }
+    }
 
     // Invalidate cache
     this.clearCache(dir);
@@ -301,7 +365,16 @@ export class FilesystemService {
     } catch (err: any) {
       if (err instanceof BadRequestException) throw err;
     }
-    await fs.promises.mkdir(target, { recursive: true });
+    try {
+      await fs.promises.mkdir(target, { recursive: true });
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        throw new BadRequestException(
+          `Permission denied (EACCES): Cannot create folder in "${parentPath}". Run: sudo chown -R $USER:$USER "${this.resolveBase(parentPath)}"`,
+        );
+      }
+      throw err;
+    }
     this.clearCache(path.dirname(target));
     return { path: target, name };
   }
@@ -317,7 +390,16 @@ export class FilesystemService {
     } catch (err: any) {
       if (err instanceof BadRequestException) throw err;
     }
-    await fs.promises.rename(resolved, newPath);
+    try {
+      await fs.promises.rename(resolved, newPath);
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        throw new BadRequestException(
+          `Permission denied (EACCES): Cannot rename "${oldPath}". Run: sudo chown -R $USER:$USER "${dir}"`,
+        );
+      }
+      throw err;
+    }
     this.clearCache(dir);
     return { oldPath: resolved, newPath };
   }
@@ -325,11 +407,20 @@ export class FilesystemService {
   async delete(targetPath: string) {
     const resolved = this.resolveFilePath(targetPath);
     await this.ensureExistsAsync(resolved);
-    const stat = await fs.promises.stat(resolved);
-    if (stat.isDirectory()) {
-      await fs.promises.rm(resolved, { recursive: true, force: true });
-    } else {
-      await fs.promises.unlink(resolved);
+    try {
+      const stat = await fs.promises.stat(resolved);
+      if (stat.isDirectory()) {
+        await fs.promises.rm(resolved, { recursive: true, force: true });
+      } else {
+        await fs.promises.unlink(resolved);
+      }
+    } catch (err: any) {
+      if (err.code === 'EACCES') {
+        throw new BadRequestException(
+          `Permission denied (EACCES): Cannot delete "${path.basename(resolved)}". Run: sudo chown -R $USER:$USER "${resolved}"`,
+        );
+      }
+      throw err;
     }
     this.clearCache(path.dirname(resolved));
     return { deleted: resolved };
