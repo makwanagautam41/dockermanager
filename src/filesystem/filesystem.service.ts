@@ -4,8 +4,37 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { resolveSafePath } from '../common/resolve-path';
 
+export interface EnvFileEntry {
+  name: string;
+  path: string;
+  content: string;
+}
+
+interface CacheEntry {
+  tree: any;
+  envFiles: EnvFileEntry[];
+  timestamp: number;
+  mtimeMs: number;
+}
+
 @Injectable()
 export class FilesystemService {
+  // In-memory cache for high-speed tree responses
+  private treeCache = new Map<string, CacheEntry>();
+  private readonly CACHE_TTL_MS = 60000; // 60 seconds TTL
+
+  public clearCache(subPathPrefix?: string) {
+    if (!subPathPrefix) {
+      this.treeCache.clear();
+      return;
+    }
+    for (const key of this.treeCache.keys()) {
+      if (key.startsWith(subPathPrefix) || subPathPrefix.startsWith(key)) {
+        this.treeCache.delete(key);
+      }
+    }
+  }
+
   private rootPath(): string {
     const root = process.env.DEFAULT_WORKSPACE_ROOT?.trim();
     return root ? path.resolve(root) : path.resolve('docker-yaml-files');
@@ -42,60 +71,92 @@ export class FilesystemService {
     return this.ensureInsideRoot(path.resolve(root, rel));
   }
 
-  private ensureRoot(target: string) {
-    if (!fs.existsSync(target)) {
-      fs.mkdirSync(target, { recursive: true });
+  private async ensureRootAsync(target: string) {
+    try {
+      await fs.promises.access(target);
+    } catch {
+      await fs.promises.mkdir(target, { recursive: true });
     }
   }
 
-  browse(basePath: string, subPath?: string) {
+  async browse(basePath: string, subPath?: string) {
     const resolvedBase = this.resolveBase(basePath);
-    this.ensureRoot(resolvedBase);
+    await this.ensureRootAsync(resolvedBase);
     const target = subPath
       ? resolveSafePath(resolvedBase, subPath)
       : resolvedBase;
-    this.ensureExists(target);
-    const entries = fs.readdirSync(target, { withFileTypes: true });
-    // Include .env files explicitly
-    const result: any[] = entries.map((e) => {
-      const full = path.join(target, e.name);
-      const stat = fs.statSync(full);
-      return {
-        name: e.name,
-        type: e.isDirectory() ? 'directory' : 'file',
-        size: e.isFile() ? stat.size : 0,
-        modifiedAt: stat.mtime,
-      };
-    });
-    // Check for .env file and add it if present
+    await this.ensureExistsAsync(target);
+
+    const entries = await fs.promises.readdir(target, { withFileTypes: true });
+
+    // Process all stats in parallel
+    const result = await Promise.all(
+      entries.map(async (e) => {
+        const full = path.join(target, e.name);
+        try {
+          const stat = await fs.promises.stat(full);
+          return {
+            name: e.name,
+            type: e.isDirectory() ? 'directory' : 'file',
+            size: e.isFile() ? stat.size : 0,
+            modifiedAt: stat.mtime,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const filtered = result.filter(Boolean) as any[];
+
+    // Check for .env file in parallel
     const envPath = path.join(target, '.env');
     try {
-      if (fs.existsSync(envPath)) {
-        const envStat = fs.statSync(envPath);
-        result.push({
-          name: '.env',
-          type: 'file',
-          size: envStat.size,
-          modifiedAt: envStat.mtime,
-          isEnv: true,
-        });
-      }
+      const envStat = await fs.promises.stat(envPath);
+      filtered.push({
+        name: '.env',
+        type: 'file',
+        size: envStat.size,
+        modifiedAt: envStat.mtime,
+        isEnv: true,
+      });
     } catch {}
-    return result;
+
+    return filtered;
   }
 
-
-  getTree(basePath: string, subPath?: string) {
+  async getTree(basePath: string, subPath?: string) {
     const resolvedBase = this.resolveBase(basePath);
     const target = subPath
       ? resolveSafePath(resolvedBase, subPath)
       : resolvedBase;
-    if (!fs.existsSync(target)) {
-      this.ensureRoot(target);
+
+    await this.ensureRootAsync(target);
+
+    // Fast cache check
+    const now = Date.now();
+    const cached = this.treeCache.get(target);
+    if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
+      try {
+        const rootStat = await fs.promises.stat(target);
+        if (rootStat.mtimeMs <= cached.mtimeMs) {
+          return { tree: cached.tree, envFiles: cached.envFiles };
+        }
+      } catch {}
     }
 
-    const buildTree = (currentPath: string): any => {
-      const stat = fs.statSync(currentPath);
+    const envFiles: EnvFileEntry[] = [];
+    const rootEnvPath = path.join(this.rootPath(), '.env');
+
+    // Asynchronous parallel recursive tree builder
+    const buildTreeAsync = async (currentPath: string): Promise<any> => {
+      let stat: fs.Stats;
+      try {
+        stat = await fs.promises.stat(currentPath);
+      } catch {
+        return null;
+      }
+
       const name = path.basename(currentPath);
       const isDir = stat.isDirectory();
 
@@ -108,75 +169,105 @@ export class FilesystemService {
         env: undefined,
       };
 
-      let envContent: string | undefined;
       if (isDir) {
-        const entries = fs.readdirSync(currentPath, { withFileTypes: true });
-        node.children = entries
-          .filter((e) => e.name !== '.git' && e.name !== 'node_modules')
-          .map((e) => buildTree(path.join(currentPath, e.name)));
-        // Check for .env file in directories
-        const envPath = path.join(currentPath, '.env');
-        if (fs.existsSync(envPath)) {
-          try {
-            const envContent = fs.readFileSync(envPath, 'utf-8');
-            node.env = envContent
-              .split("\n")
-              .filter((l: string) => l.trim() && !l.startsWith("#"))
-              .map((l: string) => {
-                const eqIdx = l.indexOf("=");
-                if (eqIdx === -1) return { key: l.trim(), value: "" };
-                return {
-                  key: l.slice(0, eqIdx).trim(),
-                  value: l.slice(eqIdx + 1).trim(),
-                  secret: /pass|secret|token|key|password/i.test(l.slice(0, eqIdx)),
-                };
-              });
-          } catch {}
+        let entries: fs.Dirent[] = [];
+        try {
+          entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+        } catch {
+          entries = [];
         }
-        // Add env file entry at root level
-        const rootEnvPath = path.join(this.rootPath(), '.env');
-        if (currentPath === rootEnvPath) {
-          node.envFile = {
-            name: '.env',
-            path: rootEnvPath,
-            content: envContent,
-          };
+
+        const filteredEntries = entries.filter(
+          (e) => e.name !== '.git' && e.name !== 'node_modules' && e.name !== '.DS_Store',
+        );
+
+        // Process children concurrently in parallel
+        const [children, envData] = await Promise.all([
+          Promise.all(
+            filteredEntries.map((e) => buildTreeAsync(path.join(currentPath, e.name))),
+          ),
+          (async () => {
+            const envPath = path.join(currentPath, '.env');
+            try {
+              const content = await fs.promises.readFile(envPath, 'utf-8');
+              const envVars = content
+                .split('\n')
+                .filter((l: string) => l.trim() && !l.startsWith('#'))
+                .map((l: string) => {
+                  const eqIdx = l.indexOf('=');
+                  if (eqIdx === -1) return { key: l.trim(), value: '' };
+                  return {
+                    key: l.slice(0, eqIdx).trim(),
+                    value: l.slice(eqIdx + 1).trim(),
+                    secret: /pass|secret|token|key|password/i.test(l.slice(0, eqIdx)),
+                  };
+                });
+              return { envVars, content, envPath };
+            } catch {
+              return null;
+            }
+          })(),
+        ]);
+
+        node.children = children.filter(Boolean);
+
+        if (envData) {
+          node.env = envData.envVars;
+          if (currentPath === rootEnvPath) {
+            node.envFile = {
+              name: '.env',
+              path: rootEnvPath,
+              content: envData.content,
+            };
+            envFiles.push(node.envFile);
+          } else {
+            envFiles.push({
+              name: '.env',
+              path: envData.envPath,
+              content: envData.content,
+            });
+          }
         }
       } else {
-        try {
-          node.content = fs.readFileSync(currentPath, 'utf-8');
-        } catch {
-          node.content = 'Binary or unsupported file';
+        // Only read text files if size is under 5MB to avoid blocking memory
+        if (stat.size <= 5 * 1024 * 1024) {
+          try {
+            node.content = await fs.promises.readFile(currentPath, 'utf-8');
+          } catch {
+            node.content = 'Binary or unsupported file';
+          }
+        } else {
+          node.content = 'File too large to display directly in preview';
         }
       }
+
       return node;
     };
 
-    const tree = buildTree(target);
+    const tree = await buildTreeAsync(target);
 
-    // Collect all .env files in the tree
-    const envFiles: EnvFileEntry[] = [];
-    const collectEnvFiles = (node: any) => {
-      if (node.isDir) {
-        if (node.envFile) {
-          envFiles.push(node.envFile);
-        }
-        node.children?.forEach(collectEnvFiles);
-      }
-    };
-    collectEnvFiles(tree);
+    // Save into cache
+    try {
+      const rootStat = await fs.promises.stat(target);
+      this.treeCache.set(target, {
+        tree,
+        envFiles,
+        timestamp: Date.now(),
+        mtimeMs: rootStat.mtimeMs,
+      });
+    } catch {}
 
     return { tree, envFiles };
   }
 
-  readFile(filePath: string) {
+  async readFile(filePath: string) {
     const resolved = this.resolveFilePath(filePath);
-    this.ensureExists(resolved);
-    const content = fs.readFileSync(resolved, 'utf-8');
+    await this.ensureExistsAsync(resolved);
+    const content = await fs.promises.readFile(resolved, 'utf-8');
     return { path: resolved, content };
   }
 
-  writeFile(filePath: string, content: string) {
+  async writeFile(filePath: string, content: string) {
     const resolved = this.resolveFilePath(filePath);
     const ext = path.extname(resolved).toLowerCase();
     if (ext === '.yml' || ext === '.yaml') {
@@ -187,10 +278,12 @@ export class FilesystemService {
       }
     }
     const dir = path.dirname(resolved);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(resolved, content, 'utf-8');
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(resolved, content, 'utf-8');
+
+    // Invalidate cache
+    this.clearCache(dir);
+
     return { path: resolved, content };
   }
 
@@ -201,64 +294,75 @@ export class FilesystemService {
     return this.ensureInsideRoot(path.resolve(root, rel));
   }
 
-  createFolder(parentPath: string, name: string) {
+  async createFolder(parentPath: string, name: string) {
     const target = resolveSafePath(this.resolveBase(parentPath), name);
-    if (fs.existsSync(target)) {
+    try {
+      await fs.promises.access(target);
       throw new BadRequestException('Folder or file already exists');
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
     }
-    fs.mkdirSync(target, { recursive: true });
+    await fs.promises.mkdir(target, { recursive: true });
+    this.clearCache(path.dirname(target));
     return { path: target, name };
   }
 
-  rename(oldPath: string, newName: string) {
+  async rename(oldPath: string, newName: string) {
     const resolved = this.resolveFilePath(oldPath);
-    this.ensureExists(resolved);
+    await this.ensureExistsAsync(resolved);
     const dir = path.dirname(resolved);
     const newPath = path.join(dir, newName);
-    if (fs.existsSync(newPath)) {
+    try {
+      await fs.promises.access(newPath);
       throw new BadRequestException('Target name already exists');
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
     }
-    fs.renameSync(resolved, newPath);
+    await fs.promises.rename(resolved, newPath);
+    this.clearCache(dir);
     return { oldPath: resolved, newPath };
   }
 
-  delete(targetPath: string) {
+  async delete(targetPath: string) {
     const resolved = this.resolveFilePath(targetPath);
-    this.ensureExists(resolved);
-    const stat = fs.statSync(resolved);
+    await this.ensureExistsAsync(resolved);
+    const stat = await fs.promises.stat(resolved);
     if (stat.isDirectory()) {
-      fs.rmSync(resolved, { recursive: true, force: true });
+      await fs.promises.rm(resolved, { recursive: true, force: true });
     } else {
-      fs.unlinkSync(resolved);
+      await fs.promises.unlink(resolved);
     }
+    this.clearCache(path.dirname(resolved));
     return { deleted: resolved };
   }
 
-  duplicate(filePath: string) {
+  async duplicate(filePath: string) {
     const resolved = this.resolveFilePath(filePath);
-    this.ensureExists(resolved);
+    await this.ensureExistsAsync(resolved);
     const dir = path.dirname(resolved);
     const ext = path.extname(resolved);
     const base = path.basename(resolved, ext);
     let copyPath = path.join(dir, `${base}-copy${ext}`);
     let idx = 1;
-    while (fs.existsSync(copyPath)) {
-      copyPath = path.join(dir, `${base}-copy-${idx}${ext}`);
-      idx++;
+    while (true) {
+      try {
+        await fs.promises.access(copyPath);
+        copyPath = path.join(dir, `${base}-copy-${idx}${ext}`);
+        idx++;
+      } catch {
+        break;
+      }
     }
-    fs.copyFileSync(resolved, copyPath);
+    await fs.promises.copyFile(resolved, copyPath);
+    this.clearCache(dir);
     return { original: resolved, copy: copyPath };
   }
 
-  private ensureExists(p: string) {
-    if (!fs.existsSync(p)) {
+  private async ensureExistsAsync(p: string) {
+    try {
+      await fs.promises.access(p);
+    } catch {
       throw new BadRequestException(`Path does not exist: ${p}`);
     }
   }
-}
-
-export interface EnvFileEntry {
-  name: string;
-  path: string;
-  content: string;
 }
